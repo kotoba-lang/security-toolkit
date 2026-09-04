@@ -1,0 +1,13 @@
+#!/usr/bin/env nbb
+;; test runner for security-toolkit (nbb, per workspace nbb-only rule)
+(require '[clojure.test :as t]
+         'sec.scan-test
+         'sec.http-test
+         'sec.pkt-test)
+
+(let [namespaces ['sec.scan-test 'sec.http-test 'sec.pkt-test]
+      results (doall (map #(t/run-tests %) namespaces))
+      bad (reduce (fn [acc {:keys [fail error]}] (+ acc fail error)) 0 results)]
+  (println "total fail+error:" bad)
+  (when-not (zero? bad)
+    (throw (ex-info "tests failed" {:bad bad}))))
