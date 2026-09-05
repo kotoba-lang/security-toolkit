@@ -3,14 +3,22 @@
   No ambient authority / host-only effects in src/: slurp, JVM interop,
   clojure.java.io, or clj-only requires. (ADR-2609051100)."
   (:require [clojure.test :refer [deftest is]]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [clojure.set :as set]))
 
 ;; nbb test runner: reading src files here is test-side only; production
 ;; sources themselves must contain none of these effect forms.
 (def fs (js/require "fs"))
 
+(def src-dir "src/sec")
+
+;; derived from the filesystem so a new production file is purity-checked
+;; automatically instead of silently escaping conformance ⑤ until listed here
 (def src-files
-  ["src/sec/scan.cljc" "src/sec/pkt.cljc" "src/sec/http.cljc" "src/sec/io.cljc"])
+  (->> (.readdirSync fs src-dir)
+       (filter #(str/ends-with? % ".cljc"))
+       (map #(str src-dir "/" %))
+       sort))
 
 (defn- read-src [path]
   (.readFileSync fs path "utf8"))
@@ -35,3 +43,11 @@
 (deftest cljc-extension-test
   (doseq [f src-files]
     (is (str/ends-with? f ".cljc") (str f " must be .cljc"))))
+
+;; discovery sanity: the derived list must cover the known namespaces, so a
+;; broken readdir (empty list) cannot silently make the checks above vacuous
+(deftest src-discovery-covers-known-namespaces-test
+  (is (set/subset? #{"src/sec/scan.cljc" "src/sec/pkt.cljc"
+                     "src/sec/http.cljc" "src/sec/io.cljc"}
+                   (set src-files))
+      "src file discovery must include the known production namespaces"))
