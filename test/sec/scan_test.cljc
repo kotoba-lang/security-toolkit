@@ -36,7 +36,7 @@
   (let [rs (scan/host-sweep {:hosts ["example.com"] :ports [80 22 443]} {:provider p})]
     (is (= [{:host "example.com" :alive? true}] rs))))
 
-;; conformance ②: classify-connect must produce all four nmap states
+;; conformance 2: classify-connect must produce all four nmap states
 ;; (:open / :closed / :filtered / :unknown) from the documented result shapes.
 (deftest classify-connect-four-states-test
   (let [states (set [(scan/classify-connect {:ok true})
@@ -54,7 +54,7 @@
     ;; issue #8: an :error shape (unrecognized provider result) is :unknown
     (is (= :unknown (scan/classify-connect {:error "confused"})))))
 
-;; conformance ② (scan level): one provider run must observe all reachable
+;; conformance 2 (scan level): one provider run must observe all reachable
 ;; states end to end — open (answered), closed (refused), filtered (silent).
 (deftest connect-scan-state-coverage-test
   (let [rs (scan/connect-scan {:hosts ["h"] :ports [80 22 443]} {:provider p})]
@@ -62,7 +62,7 @@
     (is (= 3 (count rs)))
     (is (= #{"h"} (set (map :host rs))))))
 
-;; conformance ② (dynamic layer, issue #8): :unknown must be observable at
+;; conformance 2 (dynamic layer, issue #8): :unknown must be observable at
 ;; scan level through a provider result shape matching none of the known
 ;; branches. Current normalization maps it to :filtered via the
 ;; else->{:timeout true} path; this pins the behavior so an ADR change
@@ -80,7 +80,7 @@
 (deftest classify-connect-error-shape-test
   (is (= :unknown (scan/classify-connect {:error "simulated provider confusion"}))))
 
-;; conformance ② (dynamic layer, issue #8 proposal 3): the state an
+;; conformance 2 (dynamic layer, issue #8 proposal 3): the state an
 ;; unrecognized provider result maps to must be stable across runs —
 ;; classification is a pure function of the result shape, not of timing.
 (deftest unknown-result-deterministic-test
@@ -90,9 +90,14 @@
     (is (= (run) (run)))))
 
 (deftest provider-guard-test
-  (is (thrown-with-msg? js/Error #"authority-free" (io/provider! {}))))
+  (is (thrown-with-msg? js/Error #"authority-free" (io/provider! {})))
+  ;; nil opts (a caller omitting the opts map entirely) must deny too, not
+  ;; NPE — same deny-by-default contract as the empty map (conformance 1)
+  (is (thrown-with-msg? js/Error #"authority-free" (io/provider! nil)))
+  (is (thrown-with-msg? js/Error #"provider" (scan/connect-scan {:hosts ["h"] :ports [1]} nil)))
+  (is (thrown-with-msg? js/Error #"provider" (scan/host-sweep {:hosts ["h"] :ports [1]} nil))))
 
-;; conformance ①: EVERY entry point must deny when no :provider is given
+;; conformance 1: EVERY entry point must deny when no :provider is given
 ;; (seam enforcement is not just connect-scan's job).
 (deftest provider-deny-all-entry-points-test
   (let [spec {:hosts ["h"] :ports [1]}]
