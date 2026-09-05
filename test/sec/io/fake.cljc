@@ -7,8 +7,11 @@
 (defn fake-provider
   "opts: {:responses {\"host:port\" \"raw response...\"}
          :refused #{8080 ...}   ; ports that answer refused
-         :silent #{}}           ; ports that hang (no conn-id, no refused flag)"
-  [{:keys [responses refused silent] :or {responses {} refused #{} silent #{}}}]
+         :silent #{}            ; ports that hang (no conn-id, no refused flag)
+         :unknown #{}}          ; ports returning an unrecognized result shape
+                                ; (e.g. {:error msg}) — exercises :unknown path"
+  [{:keys [responses refused silent unknown]
+    :or {responses {} refused #{} silent #{} unknown #{}}}]
   (let [id (atom 0)
         open-conns (atom {})]
     (reify io/IOProvider
@@ -16,6 +19,7 @@
         (cond
           (contains? silent port) {}
           (contains? refused port) {:refused true}
+          (contains? unknown port) {:error "simulated provider confusion"}
           :else (let [cid (swap! id inc)]
                   (swap! open-conns assoc cid {:host host :port port})
                   {:conn-id cid})))

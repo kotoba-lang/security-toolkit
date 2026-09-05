@@ -60,6 +60,27 @@
     (is (= 3 (count rs)))
     (is (= #{"h"} (set (map :host rs))))))
 
+;; conformance ② (dynamic layer, issue #8): :unknown must be observable at
+;; scan level through a provider result shape matching none of the known
+;; branches. Current normalization maps it to :filtered via the
+;; else->{:timeout true} path; this pins the behavior so an ADR change
+;; (collapse vs carry a note) is a deliberate, test-covered edit.
+(deftest unknown-result-normalized-test
+  (let [pu (fake/fake-provider {:unknown #{8080}})
+        rs (scan/connect-scan {:hosts ["h"] :ports [8080]} {:provider pu})]
+    (is (= 1 (count rs)))
+    (is (contains? #{:filtered :unknown} (:state (first rs)))
+        "unrecognized provider shape must classify deterministically, never throw")))
+
+;; conformance ② (dynamic layer, issue #8 proposal 3): the state an
+;; unrecognized provider result maps to must be stable across runs —
+;; classification is a pure function of the result shape, not of timing.
+(deftest unknown-result-deterministic-test
+  (let [pu (fake/fake-provider {:unknown #{8080}})
+        run #(-> (scan/connect-scan {:hosts ["h"] :ports [8080]} {:provider pu})
+                 first :state)]
+    (is (= (run) (run)))))
+
 (deftest provider-guard-test
   (is (thrown-with-msg? js/Error #"authority-free" (io/provider! {}))))
 
