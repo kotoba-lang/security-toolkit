@@ -3,9 +3,10 @@
 (require '[clojure.test :as t]
          'sec.scan-test
          'sec.http-test
-         'sec.pkt-test)
+         'sec.pkt-test
+         'sec.pure-cljc-test)
 
-(let [namespaces ['sec.scan-test 'sec.http-test 'sec.pkt-test]
+(let [namespaces ['sec.scan-test 'sec.http-test 'sec.pkt-test 'sec.pure-cljc-test]
       results (doall (map #(t/run-tests %) namespaces))
       bad (reduce (fn [acc {:keys [fail error]}] (+ acc fail error)) 0 results)]
   (println "total fail+error:" bad)

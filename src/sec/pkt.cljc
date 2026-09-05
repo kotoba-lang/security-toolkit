@@ -125,7 +125,7 @@
 ;; ── pcap file ───────────────────────────────────────────────────────────
 
 (defn dissect-pcap
-  "Parse a classic pcap byte array (as from slurping a file into bytes)
+  "Parse a classic pcap byte array (as from reading a file into bytes)
   and dissect each frame. Returns vector of
   {:frame n :ts-sec n :ts-usec n :eth ... :ip ... :l4 ...}"
   [b]
