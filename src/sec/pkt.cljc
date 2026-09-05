@@ -43,13 +43,12 @@
 
 (defn- detect-endianness
   [b]
-  ;; magic d4c3b2a1 (LE) or a1b2c3d4 (BE); nano variants share the layout
-  (let [m0 (u8 b 0) m1 (u8 b 1) m2 (u8 b 2) m3 (u8 b 3)]
+  ;; returns {:endian ... :ts-unit :us|:ns} — :ts-unit follows the pcap magic
+  (let [m0 (u8 b 0) m1 (u8 b 1)]
     (cond
-      (and (= m0 0xd4) (= m1 0xc3)) :little
-      (and (= m0 0xa1) (= m1 0xb2)) :big
-      (and (= m0 0x4d) (= m1 0x3c)) :little   ; nanosecond LE
-      (and (= m0 0xa1) (= m1 0xb2)) :big
+      (and (= m0 0xd4) (= m1 0xc3)) {:endian :little :ts-unit :us}
+      (and (= m0 0xa1) (= m1 0xb2)) {:endian :big    :ts-unit :us}
+      (and (= m0 0x4d) (= m1 0x3c)) {:endian :little :ts-unit :ns} ; nanosecond LE
       :else (throw (ex-info "not a pcap file" {:kind ::not-pcap :magic (bytes->hex b 0 4)})))))
 
 ;; ── frame parsing ───────────────────────────────────────────────────────
@@ -127,9 +126,13 @@
 (defn dissect-pcap
   "Parse a classic pcap byte array (as from reading a file into bytes)
   and dissect each frame. Returns vector of
-  {:frame n :ts-sec n :ts-usec n :eth ... :ip ... :l4 ...}"
+  {:frame n :ts-sec n :ts-usec n :ts-unit :us|:ns :eth ... :ip ... :l4 ...}
+
+  :ts-usec is the raw timestamp-fraction field; :ts-unit (:us or :ns, from
+  the file magic) says what unit it is in, so nanosecond pcap files are not
+  silently misread as microseconds (issue #9)."
   [b]
-  (let [endian (detect-endianness b)
+  (let [{endian :endian, ts-unit :ts-unit} (detect-endianness b)
         rd16 (if (= endian :little) u16le u16be)
         rd32 (fn [off] (if (= endian :little)
                          (let [a (u8 b off) bb (u8 b (inc off)) c (u8 b (+ off 2)) d (u8 b (+ off 3))]
@@ -152,6 +155,7 @@
                   (merge {:frame (inc (count @frames))
                           :ts-sec ts-sec
                           :ts-usec ts-frac
+                          :ts-unit ts-unit
                           :caplen caplen
                           :origlen origlen}
                          (dissect-frame (into-array (map #(aget b (+ data-off %)) (range caplen))))))
