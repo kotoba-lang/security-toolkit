@@ -1,6 +1,7 @@
 (ns sec.scan-test
   (:require [clojure.test :refer [deftest is testing]]
             [sec.scan :as scan]
+            [sec.http :as http]
             [sec.io :as io]
             [sec.io.fake :as fake]))
 
@@ -37,3 +38,16 @@
 
 (deftest provider-guard-test
   (is (thrown-with-msg? js/Error #"authority-free" (io/provider! {}))))
+
+;; conformance ①: EVERY entry point must deny when no :provider is given
+;; (seam enforcement is not just connect-scan's job).
+(deftest provider-deny-all-entry-points-test
+  (let [spec {:hosts ["h"] :ports [1]}]
+    (doseq [[name thunk]
+            [["sec.scan/connect-scan" #(scan/connect-scan spec {})]
+             ["sec.scan/host-sweep"   #(scan/host-sweep spec {})]
+             ["sec.http/send-request" #(http/send-request
+                                        {:method "GET" :path "/" :headers {} :body ""}
+                                        {:host "h"})]]]
+      (is (thrown-with-msg? js/Error #"provider" (thunk))
+          (str name " must deny without :provider")))))
