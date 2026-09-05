@@ -16,13 +16,15 @@
 
 (defn classify-connect
   "Classify one connect attempt result into nmap-like state.
-  result is {:ok true} | {:refused true} | {:timeout true} | {:unreachable true}"
+  result is {:ok true} | {:refused true} | {:timeout true} | {:unreachable true}
+  | {:error msg} (unrecognized provider shape — classifies :unknown, issue #8)"
   [result]
   (cond
     (:ok result)          :open
     (:refused result)     :closed
     (:timeout result)     :filtered
     (:unreachable result) :filtered
+    (:error result)       :unknown
     :else                 :unknown))
 
 ;; ── scan plan ───────────────────────────────────────────────────────────
@@ -44,6 +46,9 @@
       (:conn-id r) (do (io/close-conn provider (:conn-id r))
                        {:ok true})
       (:refused r) {:refused true}
+      (:error r)   {:error (:error r)}   ; unrecognized provider shape —
+                                         ; carried so classify-connect can
+                                         ; report :unknown (issue #8)
       :else        {:timeout true})))
 
 (defn connect-scan
