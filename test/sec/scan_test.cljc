@@ -50,7 +50,9 @@
     (is (= :filtered (scan/classify-connect {:unreachable true})))
     ;; conflicting result still classifies deterministically, never throws
     (is (contains? #{:open :closed :filtered :unknown}
-                   (scan/classify-connect {:ok true :refused true})))))
+                   (scan/classify-connect {:ok true :refused true})))
+    ;; issue #8: an :error shape (unrecognized provider result) is :unknown
+    (is (= :unknown (scan/classify-connect {:error "confused"})))))
 
 ;; conformance ② (scan level): one provider run must observe all reachable
 ;; states end to end — open (answered), closed (refused), filtered (silent).
@@ -65,12 +67,18 @@
 ;; branches. Current normalization maps it to :filtered via the
 ;; else->{:timeout true} path; this pins the behavior so an ADR change
 ;; (collapse vs carry a note) is a deliberate, test-covered edit.
-(deftest unknown-result-normalized-test
+;; issue #8 (resolved): an unrecognized provider result shape (:error ...) is
+;; carried through try-connect and classified :unknown — no longer silently
+;; collapsed to :filtered via the else->{:timeout true} path.
+(deftest unknown-result-observable-test
   (let [pu (fake/fake-provider {:unknown #{8080}})
         rs (scan/connect-scan {:hosts ["h"] :ports [8080]} {:provider pu})]
     (is (= 1 (count rs)))
-    (is (contains? #{:filtered :unknown} (:state (first rs)))
-        "unrecognized provider shape must classify deterministically, never throw")))
+    (is (= :unknown (:state (first rs)))
+        "unrecognized provider shape must surface as :unknown, not :filtered")))
+
+(deftest classify-connect-error-shape-test
+  (is (= :unknown (scan/classify-connect {:error "simulated provider confusion"}))))
 
 ;; conformance ② (dynamic layer, issue #8 proposal 3): the state an
 ;; unrecognized provider result maps to must be stable across runs —
