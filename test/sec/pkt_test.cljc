@@ -107,6 +107,42 @@
     (is (= :us (:ts-unit (first (pkt/dissect-pcap (pcap-wrap frame {:endian :little}))))))
     (is (= :us (:ts-unit (first (pkt/dissect-pcap (pcap-wrap frame {:endian :big}))))))))
 
+;; golden: BE nanosecond-variant magic (a1 b2 3c 4d) shares its first two
+;; bytes with classic BE (a1 b2 c3 d4) — must classify :endian :big with
+;; :ts-unit :ns and dissect the frame as BE, not fall through to classic BE
+;; with the frame bytes read little-endian (issue #15)
+(defn- pcap-wrap-be-ns
+  "Wrap one frame into a big-endian nanosecond-variant pcap container."
+  [frame-bytes]
+  (let [n (count frame-bytes)
+        le32 (fn [v] [(bit-and v 0xff) (bit-and (bit-shift-right v 8) 0xff)
+                      (bit-and (bit-shift-right v 16) 0xff) (bit-and (bit-shift-right v 24) 0xff)])
+        be32 (fn [v] (reverse (le32 v)))
+        hdr (concat [0xa1 0xb2 0x3c 0x4d]        ; magic BE ns
+                    (be32 2) (be32 0)            ; version 2.4
+                    (be32 0) (be32 262144)       ; thiszone, snaplen
+                    (be32 1))                    ; linktype Ethernet
+        rec (concat (be32 1700000000) (be32 123456)
+                    (be32 n) (be32 n))]
+    (byte-array* (concat hdr rec frame-bytes))))
+
+(deftest dissect-pcap-big-endian-nanosecond-golden-test
+  (let [frame (eth+ipv4+tcp-bytes)
+        pc (pcap-wrap-be-ns frame)
+        f (first (pkt/dissect-pcap pc))]
+    (is (= "a1 b2 3c 4d" (#'pkt/bytes->hex pc 0 4)))
+    (is (= 1700000000 (:ts-sec f)))
+    (is (= 123456 (:ts-usec f)))
+    (is (= :ns (:ts-unit f)))
+    (is (= "10.0.0.1" (get-in f [:ip :src])))
+    (is (= "10.0.0.2" (get-in f [:ip :dst])))
+    (is (= "TCP" (get-in f [:ip :protocol])))
+    (is (= 4444 (get-in f [:l4 :src-port])))
+    (is (= 80 (get-in f [:l4 :dst-port])))
+    (is (get-in f [:l4 :flags :syn]))
+    ;; classic BE (a1 b2 c3 d4) must still classify :ts-unit :us
+    (is (= :us (:ts-unit (first (pkt/dissect-pcap (pcap-wrap frame {:endian :big}))))))))
+
 ;; UDP golden fixture (issue #5)
 
 (defn- eth+ipv4+udp-bytes
