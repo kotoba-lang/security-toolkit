@@ -36,6 +36,30 @@
   (let [rs (scan/host-sweep {:hosts ["example.com"] :ports [80 22 443]} {:provider p})]
     (is (= [{:host "example.com" :alive? true}] rs))))
 
+;; conformance ②: classify-connect must produce all four nmap states
+;; (:open / :closed / :filtered / :unknown) from the documented result shapes.
+(deftest classify-connect-four-states-test
+  (let [states (set [(scan/classify-connect {:ok true})
+                     (scan/classify-connect {:refused true})
+                     (scan/classify-connect {:timeout true})
+                     (scan/classify-connect {:unreachable true})
+                     (scan/classify-connect {})])]
+    (is (= #{:open :closed :filtered :unknown} states))
+    ;; both filtered shapes collapse to the same value (nmap semantics)
+    (is (= :filtered (scan/classify-connect {:timeout true})))
+    (is (= :filtered (scan/classify-connect {:unreachable true})))
+    ;; conflicting result still classifies deterministically, never throws
+    (is (contains? #{:open :closed :filtered :unknown}
+                   (scan/classify-connect {:ok true :refused true})))))
+
+;; conformance ② (scan level): one provider run must observe all reachable
+;; states end to end — open (answered), closed (refused), filtered (silent).
+(deftest connect-scan-state-coverage-test
+  (let [rs (scan/connect-scan {:hosts ["h"] :ports [80 22 443]} {:provider p})]
+    (is (= #{:open :closed :filtered} (set (map :state rs))))
+    (is (= 3 (count rs)))
+    (is (= #{"h"} (set (map :host rs))))))
+
 (deftest provider-guard-test
   (is (thrown-with-msg? js/Error #"authority-free" (io/provider! {}))))
 
