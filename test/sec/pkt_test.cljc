@@ -91,3 +91,53 @@
 (deftest not-pcap-bad-magic-test
   (is (thrown-with-msg? js/Error #"not a pcap"
         (pkt/dissect-pcap (pcap-wrap (eth+ipv4+tcp-bytes) {:magic [0xde 0xad 0xbe 0xef]})))))
+
+;; ── UDP golden fixture (issue #5) ────────────────────────────────────────
+
+(defn- eth+ipv4+udp-bytes
+  "Minimal Ethernet/IPv4/UDP frame: 10.0.0.1:5353 -> 10.0.0.2:53, 4-byte payload."
+  []
+  (let [eth [0x00 0x11 0x22 0x33 0x44 0x55
+             0x66 0x77 0x88 0x99 0xaa 0xbb
+             0x08 0x00]
+        ;; IPv4 header, 20 bytes, ihl 5, proto 17 (UDP), total len 32
+        ip [0x45 0x00 0x00 0x20
+            0x00 0x01 0x00 0x00
+            0x40 0x11 0x00 0x00
+            10 0 0 1
+            10 0 0 2]
+        ;; UDP header, 8 bytes: src 5353 dst 53, length 12 (8 hdr + 4 payload)
+        udp [0x14 0xe9 0x00 0x35
+             0x00 0x0c 0xbe 0xef]
+        payload [0xde 0xad 0x01 0x02]]
+    (byte-array* (concat eth ip udp payload))))
+
+(deftest dissect-udp-golden-test
+  (let [f (pkt/dissect-frame (eth+ipv4+udp-bytes))]
+    (is (= "UDP" (get-in f [:ip :protocol])))
+    (is (= "10.0.0.1" (get-in f [:ip :src])))
+    (is (= 5353 (get-in f [:l4 :src-port])))
+    (is (= 53 (get-in f [:l4 :dst-port])))
+    ;; UDP length = header (8) + payload (4)
+    (is (= 12 (get-in f [:l4 :length])))
+    ;; checksum renders as 4-digit hex string
+    (is (= "beef" (get-in f [:l4 :checksum])))))
+
+(deftest dissect-pcap-udp-golden-test
+  (let [f (first (pkt/dissect-pcap (pcap-wrap (eth+ipv4+udp-bytes))))]
+    (is (= 1 (:frame f)))
+    (is (= "UDP" (get-in f [:ip :protocol])))
+    (is (= 53 (get-in f [:l4 :dst-port])))))
+
+;; mixed pcap: one TCP frame followed by one UDP frame, each with correct :l4
+(deftest dissect-pcap-mixed-tcp-udp-test
+  (let [hdr  (take 24 (seq (pcap-wrap (eth+ipv4+tcp-bytes))))
+        recs (mapcat #(drop 24 (seq (pcap-wrap %)))
+                     [(eth+ipv4+tcp-bytes) (eth+ipv4+udp-bytes)])
+        pcap (byte-array* (concat hdr recs))
+        frames (pkt/dissect-pcap pcap)]
+    (is (= 2 (count frames)))
+    (is (= "TCP" (get-in (first frames) [:ip :protocol])))
+    (is (= 80 (get-in (first frames) [:l4 :dst-port])))
+    (is (= "UDP" (get-in (second frames) [:ip :protocol])))
+    (is (= 53 (get-in (second frames) [:l4 :dst-port])))))
