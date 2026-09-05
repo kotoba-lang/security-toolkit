@@ -20,9 +20,8 @@
         tcp [0x11 0x5c 0x00 0x50
              0x00 0x00 0x00 0x01
              0x00 0x00 0x00 0x01
-             0x50 0x02
-             0x20 0x00                        ; window
-             0x00 0x00 0x00 0x00]]
+             0x50 0x02 0x20 0x00]
+        payload []]
     (byte-array* (concat eth ip tcp))))
 
 (defn- pcap-wrap
@@ -92,7 +91,23 @@
   (is (thrown-with-msg? js/Error #"not a pcap"
         (pkt/dissect-pcap (pcap-wrap (eth+ipv4+tcp-bytes) {:magic [0xde 0xad 0xbe 0xef]})))))
 
-;; ── UDP golden fixture (issue #5) ────────────────────────────────────────
+;; golden: nanosecond-variant magic (4d 3c b2 a1, LE) must be dissected with
+;; :ts-unit :ns so consumers don't do 1000x-off wall-clock math (issue #9)
+(deftest dissect-pcap-nanosecond-golden-test
+  (let [frame (eth+ipv4+tcp-bytes)
+        pc (pcap-wrap frame {:magic [0x4d 0x3c 0xb2 0xa1]})
+        f (first (pkt/dissect-pcap pc))]
+    (is (= "4d 3c b2 a1" (#'pkt/bytes->hex pc 0 4)))
+    (is (= 1700000000 (:ts-sec f)))
+    (is (= 123456 (:ts-usec f)))
+    (is (= :ns (:ts-unit f)))
+    (is (= "10.0.0.2" (get-in f [:ip :dst])))
+    (is (= 80 (get-in f [:l4 :dst-port])))
+    ;; classic files keep :ts-unit :us
+    (is (= :us (:ts-unit (first (pkt/dissect-pcap (pcap-wrap frame {:endian :little}))))))
+    (is (= :us (:ts-unit (first (pkt/dissect-pcap (pcap-wrap frame {:endian :big}))))))))
+
+;; UDP golden fixture (issue #5)
 
 (defn- eth+ipv4+udp-bytes
   "Minimal Ethernet/IPv4/UDP frame: 10.0.0.1:5353 -> 10.0.0.2:53, 4-byte payload."
