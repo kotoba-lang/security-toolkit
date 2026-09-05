@@ -26,17 +26,22 @@
     (byte-array* (concat eth ip tcp))))
 
 (defn- pcap-wrap
-  "Wrap one frame into classic little-endian pcap bytes."
-  [frame-bytes]
+  "Wrap one frame into classic pcap bytes. :endian :little (default) or :big."
+  [frame-bytes & [{:keys [endian magic] :or {endian :little}}]]
   (let [n (count frame-bytes)
         le32 (fn [v] [(bit-and v 0xff) (bit-and (bit-shift-right v 8) 0xff)
                       (bit-and (bit-shift-right v 16) 0xff) (bit-and (bit-shift-right v 24) 0xff)])
-        hdr (concat [0xd4 0xc3 0xb2 0xa1]   ; magic LE
-                    (le32 2) (le32 0)        ; version 2.4
-                    (le32 0) (le32 262144)   ; thiszone, snaplen
-                    (le32 1))                ; linktype Ethernet
-        rec (concat (le32 1700000000) (le32 123456)
-                    (le32 n) (le32 n))]
+        be32 (fn [v] (reverse (le32 v)))
+        w32 (if (= endian :big) be32 le32)
+        hdr (concat (or magic
+                        (if (= endian :big)
+                          [0xa1 0xb2 0xc3 0xd4]   ; magic BE
+                          [0xd4 0xc3 0xb2 0xa1])) ; magic LE
+                    (w32 2) (w32 0)               ; version 2.4
+                    (w32 0) (w32 262144)          ; thiszone, snaplen
+                    (w32 1))                      ; linktype Ethernet
+        rec (concat (w32 1700000000) (w32 123456)
+                    (w32 n) (w32 n))]
     (byte-array* (concat hdr rec frame-bytes))))
 
 (deftest hex-test
@@ -64,6 +69,25 @@
       (is (= 1700000000 (:ts-sec f)))
       (is (= 80 (get-in f [:l4 :dst-port]))))))
 
+;; golden fixture: same frame, big-endian pcap container must dissect identically
+(deftest dissect-pcap-big-endian-golden-test
+  (let [frame (eth+ipv4+tcp-bytes)
+        le (first (pkt/dissect-pcap (pcap-wrap frame {:endian :little})))
+        be (first (pkt/dissect-pcap (pcap-wrap frame {:endian :big})))]
+    (is (= "a1 b2 c3 d4" (#'pkt/bytes->hex (pcap-wrap frame {:endian :big}) 0 4)))
+    (is (= (dissoc le :caplen :origlen)
+           (dissoc be :caplen :origlen)))
+    (is (= 1700000000 (:ts-sec be)))
+    (is (= 123456 (:ts-usec be)))
+    (is (= "10.0.0.2" (get-in be [:ip :dst])))
+    (is (= 80 (get-in be [:l4 :dst-port])))
+    (is (get-in be [:l4 :flags :syn]))))
+
 (deftest not-pcap-test
   (is (thrown-with-msg? js/Error #"not a pcap"
         (pkt/dissect-pcap (byte-array* [1 2 3 4 5 6 7 8])))))
+
+;; golden: wrong magic on a otherwise-valid file must be rejected
+(deftest not-pcap-bad-magic-test
+  (is (thrown-with-msg? js/Error #"not a pcap"
+        (pkt/dissect-pcap (pcap-wrap (eth+ipv4+tcp-bytes) {:magic [0xde 0xad 0xbe 0xef]})))))
