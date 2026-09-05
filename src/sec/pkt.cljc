@@ -44,9 +44,13 @@
 (defn- detect-endianness
   [b]
   ;; returns {:endian ... :ts-unit :us|:ns} — :ts-unit follows the pcap magic
+  ;; 4-byte magic must match exactly: a1 b2 c3 d4 (BE us) vs a1 b2 3c 4d
+  ;; (BE ns, issue #15) share the first two bytes — check ns BE first.
   (let [m0 (u8 b 0) m1 (u8 b 1)]
     (cond
       (and (= m0 0xd4) (= m1 0xc3)) {:endian :little :ts-unit :us}
+      (and (= m0 0xa1) (= m1 0xb2) (= (u8 b 2) 0x3c) (= (u8 b 3) 0x4d))
+      {:endian :big :ts-unit :ns}
       (and (= m0 0xa1) (= m1 0xb2)) {:endian :big    :ts-unit :us}
       (and (= m0 0x4d) (= m1 0x3c)) {:endian :little :ts-unit :ns} ; nanosecond LE
       :else (throw (ex-info "not a pcap file" {:kind ::not-pcap :magic (bytes->hex b 0 4)})))))
