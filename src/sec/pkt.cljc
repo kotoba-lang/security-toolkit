@@ -97,12 +97,58 @@
            :rst (pos? (bit-and (u8 b (+ off 13)) 0x04))}
    :window (u16be b (+ off 14))})
 
+(defn compute-udp-checksum
+  "RFC 768 checksum over the IPv4 pseudo-header (src/dst IP, proto 17, UDP
+  length) + UDP segment. `b` is the whole frame, `ip-off` the IPv4 header
+  start, `udp-off` the UDP segment start. Pure byte arithmetic; returns the
+  16-bit checksum as a sender would compute it (issue #18)."
+  [b ip-off udp-off]
+  (let [udp-len (u16be b (+ udp-off 4))
+        words (fn [off len]
+                (let [n (quot len 2)]
+                  (concat
+                   (map (fn [i] (+ (* (aget b (+ off (* 2 i))) 256)
+                                   (aget b (+ off (inc (* 2 i))))))
+                        (range n))
+                   (when (odd? len)
+                     [(* (aget b (+ off (* 2 n))) 256)]))))
+        pseudo (concat (words (+ ip-off 12) 8)      ; src + dst IP
+                       [0x0011 udp-len])            ; proto 17, udp length
+        ;; RFC 768 computes with the checksum field zero-filled: read the
+        ;; segment but force bytes udp-off+6/+7 to 0 (stored value excluded)
+        seg-words (map (fn [i]
+                         (let [o (+ udp-off (* 2 i))]
+                           (cond
+                             (= o (+ udp-off 6)) 0
+                             (= o (+ udp-off 7)) 0
+                             :else (+ (* (aget b o) 256)
+                                      (aget b (inc o))))))
+                       (range (quot udp-len 2)))
+        seg-tail (when (odd? udp-len)
+                   [(* (aget b (+ udp-off (- udp-len 1))) 256)])
+        total (reduce + 0 (concat pseudo seg-words seg-tail))]
+    ;; fold carries until < 0x10000, then 1's-complement
+    (loop [s total]
+      (if (> s 0xFFFF)
+        (recur (bit-and (+ (bit-and s 0xFFFF) (bit-shift-right s 16)) 0xFFFF))
+        (bit-and (bit-not s) 0xFFFF)))))
+
+(defn- udp-checksum-valid?
+  "Verify the stored UDP checksum against the computed one (pure).
+  A stored checksum of 0x0000 means 'sender did not compute' (RFC 768);
+  that is reported as invalid rather than guessed (issue #18)."
+  [b ip-off udp-off]
+  (let [stored (u16be b (+ udp-off 6))]
+    (and (pos? stored)
+         (= stored (compute-udp-checksum b ip-off udp-off)))))
+
 (defn- dissect-udp
-  [b off]
+  [b off ip-off]
   {:src-port (u16be b off)
    :dst-port (u16be b (+ off 2))
    :length (u16be b (+ off 4))
-   :checksum (hex (u16be b (+ off 6)) 4)})
+   :checksum (hex (u16be b (+ off 6)) 4)
+   :checksum-valid (udp-checksum-valid? b ip-off off)})
 
 (defn- dissect-l3
   [b off ethertype]
@@ -111,7 +157,7 @@
                  l3-end (+ off (:ihl ip))
                  l4 (case (:protocol ip)
                       "TCP" (dissect-tcp b l3-end)
-                      "UDP" (dissect-udp b l3-end)
+                      "UDP" (dissect-udp b l3-end off)
                       nil)]
              (assoc ip :l4 l4))
     nil))
