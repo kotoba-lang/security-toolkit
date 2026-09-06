@@ -172,7 +172,59 @@
     ;; UDP length = header (8) + payload (4)
     (is (= 12 (get-in f [:l4 :length])))
     ;; checksum renders as 4-digit hex string
-    (is (= "beef" (get-in f [:l4 :checksum])))))
+    (is (= "beef" (get-in f [:l4 :checksum])))
+    ;; stored beef is arbitrary (not the RFC 768 checksum of this segment) —
+    ;; verification must say so instead of silently passing (issue #18)
+    (is (false? (get-in f [:l4 :checksum-valid])))))
+
+;; conformance (issue #18): a frame whose stored checksum is the real RFC 768
+;; checksum over pseudo-header + segment must verify :checksum-valid true,
+;; and a corrupted segment must flip it to false.
+(deftest udp-checksum-verification-test
+  (let [build (fn [checksum16]
+                (let [eth [0x00 0x11 0x22 0x33 0x44 0x55
+                           0x66 0x77 0x88 0x99 0xaa 0xbb
+                           0x08 0x00]
+                      ip [0x45 0x00 0x00 0x20
+                          0x00 0x01 0x00 0x00
+                          0x40 0x11 0x00 0x00
+                          10 0 0 1
+                          10 0 0 2]
+                      udp [0x14 0xe9 0x00 0x35
+                           0x00 0x0c
+                           (bit-and (bit-shift-right checksum16 8) 0xff)
+                           (bit-and checksum16 0xff)]
+                      payload [0xde 0xad 0x01 0x02]]
+                  (byte-array* (concat eth ip udp payload))))
+        ;; compute with checksum field zero-filled, then rebuild with the value
+        zero (build 0)
+        c (pkt/compute-udp-checksum zero 14 (+ 14 20))
+        good (build c)
+        bad (build c)]
+    (aset bad (+ 14 20 8 1) (int 0xff))   ; corrupt 2nd payload byte, keep checksum
+    (let [f-good (pkt/dissect-frame good)
+          f-bad (pkt/dissect-frame bad)]
+      (is (true? (get-in f-good [:l4 :checksum-valid]))
+          "stored == computed RFC 768 checksum must verify")
+      (is (= 12 (get-in f-good [:l4 :length])))
+      (is (false? (get-in f-bad [:l4 :checksum-valid]))
+          "corrupted segment must fail verification"))))
+
+;; RFC 768: stored 0x0000 means 'sender did not compute' — report invalid,
+;; never fabricate a pass (issue #18)
+(deftest udp-checksum-zero-stored-test
+  (let [b (eth+ipv4+udp-bytes)]
+    (aset b (+ 14 20 6) (int 0))
+    (aset b (+ 14 20 7) (int 0))
+    (let [f (pkt/dissect-frame b)]
+      (is (= "0000" (get-in f [:l4 :checksum])))
+      (is (false? (get-in f [:l4 :checksum-valid]))))))
+
+;; pcap level: :checksum-valid flows through dissect-pcap
+(deftest dissect-pcap-udp-checksum-test
+  (let [f (first (pkt/dissect-pcap (pcap-wrap (eth+ipv4+udp-bytes))))]
+    (is (contains? (:l4 f) :checksum-valid))
+    (is (false? (:checksum-valid (:l4 f))))))
 
 (deftest dissect-pcap-udp-golden-test
   (let [f (first (pkt/dissect-pcap (pcap-wrap (eth+ipv4+udp-bytes))))]
