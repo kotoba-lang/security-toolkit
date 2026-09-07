@@ -1,7 +1,7 @@
 (ns sec.pure-cljc-test
   "Conformance ⑤: static check that production sources stay pure `.cljc`.
   No ambient authority / host-only effects in src/: slurp, JVM interop,
-  clojure.java.io, or clj-only requires. (ADR-2609051100)."
+  clojure.java.io, clj-only requires, or cljs js/ host interop. (ADR-2609051100)."
   (:require [clojure.test :refer [deftest is]]
             [clojure.string :as str]
             [clojure.set :as set]))
@@ -31,7 +31,9 @@
    #"\.getMethod\b|\.invoke\b" ; reflection into host
    #"\bfs\b.*require|require.*\bfs\b" ; node fs require
    #"\bprocess\.env\b"         ; ambient env access
-   #"\bchild_process\b"])      ; subprocess
+   #"\bchild_process\b"        ; subprocess
+   #"\bjs/"                    ; cljs host interop (js/parseInt and friends)
+   #"#js[\s\[\{]"])            ; cljs #js literal
 
 (deftest pure-cljc-static-test
   (doseq [f src-files]

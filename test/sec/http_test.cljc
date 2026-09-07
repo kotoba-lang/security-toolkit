@@ -58,3 +58,39 @@
     (is (= 200 (:status resp)))
     (is (= "t" (get-in resp [:headers "x-tag"])))
     (is (= "ok" (:body resp)))))
+
+;; conformance ⑤ (js interop removal): parse-status-code is a pure 3-digit
+;; decimal reader that replaces the js/parseInt in parse-response. Pins the
+;; stricter-than-js semantics the old builtin leaked: garbage -> nil (no NaN),
+;; hex -> nil (js gave 16), "+2xx" -> nil (js gave 2), non-3-digit -> nil.
+(deftest parse-status-code-pure-test
+  (is (= 200 (http/parse-status-code "200")))
+  (is (= 404 (http/parse-status-code "404")))
+  (is (= 500 (http/parse-status-code "500")))
+  (is (= 100 (http/parse-status-code "100")))
+  (is (nil? (http/parse-status-code "garbage")))
+  (is (nil? (http/parse-status-code "0x10")))
+  (is (nil? (http/parse-status-code "+2xx")))
+  (is (nil? (http/parse-status-code "10")))
+  (is (nil? (http/parse-status-code "1000")))
+  (is (nil? (http/parse-status-code "2 0")))
+  (is (nil? (http/parse-status-code "-1x")))
+  (is (nil? (http/parse-status-code nil)))
+  (is (nil? (http/parse-status-code 200))))
+
+;; parse-response end-to-end through the pure reader: malformed status lines
+;; surface as nil status instead of a NaN (or a hex/prefix artifact) leaking
+;; into downstream EDN.
+(deftest parse-response-status-purity-test
+  (let [ok (http/parse-response "HTTP/1.1 418 I'm a teapot\r\n\r\n")]
+    (is (= 418 (:status ok)))
+    (is (= "I'm a teapot" (:reason ok))))
+  (let [junk (http/parse-response "HTTP/1.1 garbage Here\r\n\r\n")]
+    (is (nil? (:status junk))
+        "malformed status must be nil, never a NaN number")
+    (is (not (number? (:status junk)))))
+  (let [hex (http/parse-response "HTTP/1.1 0x10 x\r\n\r\n")]
+    (is (nil? (:status hex))
+        "hex status must not be silently parsed as 16 (js/parseInt behavior)"))
+  (let [neg (http/parse-response "HTTP/1.1 -1 x\r\n\r\n")]
+    (is (nil? (:status neg)))))
