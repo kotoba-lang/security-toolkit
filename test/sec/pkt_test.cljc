@@ -25,8 +25,10 @@
     (byte-array* (concat eth ip tcp))))
 
 (defn- pcap-wrap
-  "Wrap one frame into classic pcap bytes. :endian :little (default) or :big."
-  [frame-bytes & [{:keys [endian magic] :or {endian :little}}]]
+  "Wrap one frame into classic pcap bytes. :endian :little (default) or :big.
+   :linktype overrides the global-header linktype (default 1 = Ethernet);
+   :magic overrides the 4-byte magic number."
+  [frame-bytes & [{:keys [endian magic linktype] :or {endian :little linktype 1}}]]
   (let [n (count frame-bytes)
         le32 (fn [v] [(bit-and v 0xff) (bit-and (bit-shift-right v 8) 0xff)
                       (bit-and (bit-shift-right v 16) 0xff) (bit-and (bit-shift-right v 24) 0xff)])
@@ -38,7 +40,7 @@
                           [0xd4 0xc3 0xb2 0xa1])) ; magic LE
                     (w32 2) (w32 0)               ; version 2.4
                     (w32 0) (w32 262144)          ; thiszone, snaplen
-                    (w32 1))                      ; linktype Ethernet
+                    (w32 linktype))               ; linktype (1 = Ethernet)
         rec (concat (w32 1700000000) (w32 123456)
                     (w32 n) (w32 n))]
     (byte-array* (concat hdr rec frame-bytes))))
@@ -244,3 +246,30 @@
     (is (= 80 (get-in (first frames) [:l4 :dst-port])))
     (is (= "UDP" (get-in (second frames) [:ip :protocol])))
     (is (= 53 (get-in (second frames) [:l4 :dst-port])))))
+
+;; conformance ③ (rejection side): dissect-pcap is Ethernet-only for now, so a
+;; valid-magic pcap with an unsupported linktype must be rejected LOUDLY with
+;; ex-info {:kind ::pkt/linktype} — both endiannesses, common real-world link
+;; types (0 NULL, 12 RAW, 101/113 IEEE802, 276 Solaris IPNET) — and the
+;; rejection must carry the actual linktype in ex-data. Silently dissecting
+;; non-Ethernet bytes as Ethernet (or NPE'ing) is the failure mode pinned out
+;; here. Linktype is read with the file's endianness, so BE files must reject
+;; too.
+(deftest dissect-pcap-unsupported-linktype-test
+  (doseq [endian [:little :big]
+          lt     [0 12 101 113 276]]
+    (let [pc (pcap-wrap (eth+ipv4+tcp-bytes) {:endian endian :linktype lt})
+          err (try
+                (pkt/dissect-pcap pc)
+                (catch :default e e))]
+      (is (instance? js/Error err)
+          (str endian " linktype " lt " must throw, not dissect"))
+      (is (= :sec.pkt/linktype (:kind (ex-data err)))
+          (str endian " linktype " lt " must throw ex-info with :kind :sec.pkt/linktype"))
+      (is (= lt (:linktype (ex-data err)))
+          (str endian " linktype " lt " must carry the actual linktype in ex-data"))))
+  ;; positive control: linktype 1 (Ethernet) still parses through the same
+  ;; builder — the guard rejects others, not everything
+  (is (= 1 (count (pkt/dissect-pcap
+                   (pcap-wrap (eth+ipv4+tcp-bytes) {:linktype 1}))))
+      "linktype 1 must remain accepted via the same pcap-wrap path"))
