@@ -7,6 +7,22 @@
 
 ;; ── request parsing ─────────────────────────────────────────────────────
 
+(defn parse-status-code
+  "Read a 3-digit decimal HTTP status code, purely (no host interop —
+  conformance 5). Returns nil unless s is exactly three ASCII digits.
+  Deliberately stricter than the host parseInt builtin it replaces: no NaN
+  leak for garbage, no hex (\"0x10\" -> 16), no prefix truncation
+  (\"+2xx\" -> 2)."
+  [s]
+  (let [digits "0123456789"]
+    (when (and (string? s) (= 3 (count s)))
+      (reduce (fn [acc c]
+                (if-let [i (str/index-of digits c)]
+                  (+ (* acc 10) i)
+                  (reduced nil)))
+              0
+              s))))
+
 (defn parse-request
   "Parse a raw HTTP request string into EDN:
   {:method :path :version :headers {lowercased -> value} :body}
@@ -33,7 +49,8 @@
      :body body}))
 
 (defn parse-response
-  "Parse a raw HTTP response string: {:version :status :reason :headers :body}"
+  "Parse a raw HTTP response string: {:version :status :reason :headers :body}
+  :status is a pure 3-digit read (see parse-status-code); nil on malformed."
   [raw]
   (let [[head body] (if-let [i (str/index-of raw "\r\n\r\n")]
                       [(subs raw 0 i) (subs raw (+ i 4))]
@@ -50,7 +67,7 @@
                   {}
                   (rest lines))]
     {:version (first (str/split (first lines) #" " 2))
-     :status (some-> status js/parseInt)
+     :status (parse-status-code status)
      :reason (when reason (str/join " " reason))
      :headers headers
      :body body}))
