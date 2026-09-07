@@ -94,3 +94,30 @@
         "hex status must not be silently parsed as 16 (js/parseInt behavior)"))
   (let [neg (http/parse-response "HTTP/1.1 -1 x\r\n\r\n")]
     (is (nil? (:status neg)))))
+
+;; conformance ① (seam enforcement, wire layer): the ONLY effect of
+;; send-request is the bytes handed to the provider's send-bytes — so far
+;; the seam was only guarded for "provider present" (deny tests), never for
+;; "what actually crosses it". fake/recorded-requests now reads back the
+;; provider's send log (previously a nil-returning stub). Pins that exactly
+;; one request crosses the seam, the request's own Host header survives the
+;; host-hdr override in send-request, repeated headers stay repeated, and
+;; re-parsing the recorded wire recovers the original EDN — a render that
+;; never reaches the provider, or reaches it mangled, fails here.
+(deftest send-request-wire-bytes-test
+  (let [pf (fake/fake-provider {:responses {"h:80" "HTTP/1.1 200 OK\r\n\r\nok"}})
+        raw "GET /x HTTP/1.1\r\nHost: original\r\nX-Tag: a\r\nX-Tag: b\r\nContent-Length: 4\r\n\r\nbody"
+        req (http/parse-request raw)
+        resp (http/send-request req {:provider pf :host "h" :port 80})
+        sent (fake/recorded-requests pf)]
+    (is (= 200 (:status resp)))
+    (is (= 1 (count sent)) "exactly one request must cross the seam")
+    (let [wire (:bytes (first sent))
+          reparsed (http/parse-request wire)]
+      (is (= req reparsed)
+          "re-parsing the recorded wire bytes must recover the original request EDN")
+      (is (= "original" (get-in reparsed [:headers "host"]))
+          "the request's own Host header wins over opts :host (current send-request contract)")
+      (is (= ["a" "b"] (get-in reparsed [:headers "x-tag"])))
+      (is (= "body" (:body reparsed)))
+      (is (re-find #"\r\n\r\nbody$" wire)))))
