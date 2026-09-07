@@ -1,7 +1,15 @@
 (ns sec.pure-cljc-test
   "Conformance ⑤: static check that production sources stay pure `.cljc`.
   No ambient authority / host-only effects in src/: slurp, JVM interop,
-  clojure.java.io, clj-only requires, or cljs js/ host interop. (ADR-2609051100)."
+  clojure.java.io, clj-only requires, or cljs js/ host interop. (ADR-2609051100).
+
+  A text guard with no positive control passes vacuously whenever src happens
+  not to contain the form yet — that is how js/parseInt slipped through until
+  PR #20. forbidden-guard-detects-violators-test now pins every pattern
+  against its own violator example (and also catches js* reader interop,
+  goog.* Closure refs, and (.method)/(.-field) member access), while
+  forbidden-guard-clean-forms-test pins idiomatic pure forms so the guard
+  can never be 'fixed' into a sledgehammer."
   (:require [clojure.test :refer [deftest is]]
             [clojure.string :as str]
             [clojure.set :as set]))
@@ -26,14 +34,17 @@
 (def forbidden
   [#"slurp"                    ; file I/O
    #"clojure\.java\.io"        ; clj-only I/O namespace
-   #"\bSystem\."               ; JVM interop
+   #"\bSystem[/.]"             ; JVM interop (System.getProperty and System/foo)
    #"java\.(io|net|lang)\."    ; JVM namespace interop
    #"\.getMethod\b|\.invoke\b" ; reflection into host
    #"\bfs\b.*require|require.*\bfs\b" ; node fs require
    #"\bprocess\.env\b"         ; ambient env access
    #"\bchild_process\b"        ; subprocess
    #"\bjs/"                    ; cljs host interop (js/parseInt and friends)
-   #"#js[\s\[\{]"])            ; cljs #js literal
+   #"#js[\s\[\{]"              ; cljs #js literal
+   #"\bjs\*"                   ; cljs js* reader-level host interop
+   #"\bgoog\."                 ; Closure libs — cljs-only, breaks JVM .cljc
+   #"\(\.[-a-zA-Z]"])          ; (.method obj) / (.-field obj) member access
 
 (deftest pure-cljc-static-test
   (doseq [f src-files]
@@ -53,3 +64,45 @@
                      "src/sec/http.cljc" "src/sec/io.cljc"}
                    (set src-files))
       "src file discovery must include the known production namespaces"))
+
+;; Positive control: one violator example per forbidden effect form — legal
+;; Clojure that would nonetheless break the pure-.cljc contract. If a pattern
+;; stops matching its own example, the blind spot fails loudly here instead of
+;; letting a real violation through pure-cljc-static-test (the pre-#20
+;; js/parseInt failure mode: the guard existed but had no such example).
+(def violators
+  [["file slurp"          "(def s (slurp \"capture.pcap\"))"]
+   ["clojure.java.io"     "(import 'clojure.java.io)"]
+   ["System interop"      "(def os (System/getProperty \"os.name\"))"]
+   ["java namespace"      "(import 'java.io.File)"]
+   ["host reflection"     "(defn bad [m] (.invoke m nil))"]
+   ["node fs require"     "(def fs (require 'fs))"]
+   ["process.env"         "(def e process.env.SECRET)"]
+   ["child_process"       "(def cp (require 'child_process))"]
+   ["js/ interop"         "(def n (js/parseInt x 10))"]
+   ["#js literal"         "(def x #js {:a 1})"]
+   ["js* reader"          "(def x (js* \"1 + 1\"))"]
+   ["goog Closure ns"     "(require '[goog.string :as gstr])"]
+   ["(.method obj)"       "(defn f [s] (.charAt s 0))"]
+   ["(.-field obj)"       "(def p (.-pathname url))"]])
+
+(deftest forbidden-guard-detects-violators-test
+  (doseq [[label src] violators]
+    (is (some #(re-find % src) forbidden)
+        (str "guard must detect forbidden effect form: " label))))
+
+;; Negative control: idiomatic pure .cljc code must not be flagged, so the
+;; patterns cannot be "fixed" into a sledgehammer that fails real sources
+;; (destructuring, bit ops, 0xff literals, #?{} reader conditionals).
+(def clean-forms
+  ["(ns sec.pkt\n  (:require [clojure.string :as str] [sec.io :as io]))"
+   "(defn classify [x] (cond (= x 1) :open :else :closed))"
+   "(defn word [b o] (bit-and (bit-shift-right (aget b o) 8) 0xff))"
+   "(let [{:keys [a b]} m] (str a \"-\" b))"
+   "(def platform (if (= :clj *platform*) :jvm :node))"
+   "(#?(:clj 1 :cljs 2))"])
+
+(deftest forbidden-guard-clean-forms-test
+  (doseq [src clean-forms]
+    (is (not-any? #(re-find % src) forbidden)
+        (str "clean pure form must not be flagged: " src))))
