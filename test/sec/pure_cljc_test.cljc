@@ -9,7 +9,14 @@
   against its own violator example (and also catches js* reader interop,
   goog.* Closure refs, and (.method)/(.-field) member access), while
   forbidden-guard-clean-forms-test pins idiomatic pure forms so the guard
-  can never be 'fixed' into a sledgehammer."
+  can never be 'fixed' into a sledgehammer.
+
+  PR #20 closed the cljs side of host interop (js/parseInt); the JVM twin —
+  (Integer/parseInt ...) static-call syntax and the (.. obj (method)) macro —
+  was still a blind spot: (.. fails the \\(\\.[-a-zA-Z] class (second char is
+  a dot) and Class/method has no js/ marker. Both are pinned now, with
+  docstring-text negative controls so prose like \"Port/host scanner\" in
+  src docstrings is not misread as interop."
   (:require [clojure.test :refer [deftest is]]
             [clojure.string :as str]
             [clojure.set :as set]))
@@ -34,7 +41,7 @@
 (def forbidden
   [#"slurp"                    ; file I/O
    #"clojure\.java\.io"        ; clj-only I/O namespace
-   #"\bSystem[/.]"             ; JVM interop (System.getProperty and System/foo)
+   #"\bSystem[/.]"             ; JVM interop (System/getProperty and System/foo)
    #"java\.(io|net|lang)\."    ; JVM namespace interop
    #"\.getMethod\b|\.invoke\b" ; reflection into host
    #"\bfs\b.*require|require.*\bfs\b" ; node fs require
@@ -44,7 +51,14 @@
    #"#js[\s\[\{]"              ; cljs #js literal
    #"\bjs\*"                   ; cljs js* reader-level host interop
    #"\bgoog\."                 ; Closure libs — cljs-only, breaks JVM .cljc
-   #"\(\.[-a-zA-Z]"])          ; (.method obj) / (.-field obj) member access
+   #"\(\.[-a-zA-Z]"            ; (.method obj) / (.-field obj) member access
+   #"\([A-Z][a-zA-Z0-9]*/"     ; JVM static-call interop (Integer/parseInt,
+                               ; Runtime/getRuntime ...) — the JVM-side twin of
+                               ; the js/parseInt hole PR #20 closed; anchored in
+                               ; call position so docstring prose like
+                               ; "Scan/pkt/http" is not flagged
+   #"\(\.\."])                 ; (.. obj (method)) dot-dot macro — (\.\. is
+                               ; missed by the [-a-zA-Z] class above)
 
 (deftest pure-cljc-static-test
   (doseq [f src-files]
@@ -84,7 +98,10 @@
    ["js* reader"          "(def x (js* \"1 + 1\"))"]
    ["goog Closure ns"     "(require '[goog.string :as gstr])"]
    ["(.method obj)"       "(defn f [s] (.charAt s 0))"]
-   ["(.-field obj)"       "(def p (.-pathname url))"]])
+   ["(.-field obj)"       "(def p (.-pathname url))"]
+   ["JVM static call"     "(def n (Integer/parseInt \"3\"))"]
+   ["Runtime exec"        "(def r (Runtime/getRuntime))"]
+   ["dot-dot macro"       "(def s (.. Thread/currentThread (getName)))"]])
 
 (deftest forbidden-guard-detects-violators-test
   (doseq [[label src] violators]
@@ -94,13 +111,19 @@
 ;; Negative control: idiomatic pure .cljc code must not be flagged, so the
 ;; patterns cannot be "fixed" into a sledgehammer that fails real sources
 ;; (destructuring, bit ops, 0xff literals, #?{} reader conditionals).
+;; The last two entries pin the Uppercase/slash false-positive class: docstring
+;; prose in the real src (sec.scan \"Port/host scanner\", sec.io
+;; \"Scan/pkt/http logic\") contains Caps/slash text that call-position
+;; anchoring must NOT flag.
 (def clean-forms
   ["(ns sec.pkt\n  (:require [clojure.string :as str] [sec.io :as io]))"
    "(defn classify [x] (cond (= x 1) :open :else :closed))"
    "(defn word [b o] (bit-and (bit-shift-right (aget b o) 8) 0xff))"
    "(let [{:keys [a b]} m] (str a \"-\" b))"
    "(def platform (if (= :clj *platform*) :jvm :node))"
-   "(#?(:clj 1 :cljs 2))"])
+   "(#?(:clj 1 :cljs 2))"
+   "(ns sec.scan\n  \"Port/host scanner — the nmap equivalent slice.\")"
+   "  Scan/pkt/http logic never opens sockets or captures packets directly."])
 
 (deftest forbidden-guard-clean-forms-test
   (doseq [src clean-forms]
