@@ -121,3 +121,35 @@
       (is (= ["a" "b"] (get-in reparsed [:headers "x-tag"])))
       (is (= "body" (:body reparsed)))
       (is (re-find #"\r\n\r\nbody$" wire)))))
+
+;; conformance ④ (mutate surface): remove-header is the third mutation entry
+;; point (alongside set-header / set-body) and had zero test coverage. It must
+;; drop the header case-insensitively by name, leave every other header —
+;; including repeated vector values — and the body intact, and the result must
+;; survive the parse→mutate→render→reparse round-trip unchanged. Removing a
+;; header that is not present is a no-op, and removing a repeated header drops
+;; the whole vector (not one entry of it).
+(deftest remove-header-roundtrip-test
+  (let [raw "GET /x HTTP/1.1\r\nHost: a.com\r\nX-Del: 1\r\nX-Keep: k\r\nX-Tag: one\r\nX-Tag: two\r\nContent-Length: 4\r\n\r\nbody"
+        parsed (http/parse-request raw)
+        removed (http/remove-header parsed "X-DEL")
+        wire (http/render-request removed)
+        reparsed (http/parse-request wire)]
+    (is (nil? (get-in removed [:headers "x-del"]))
+        "remove-header is case-insensitive like set-header")
+    (is (not (re-find #"x-del" wire)) "removed header must not appear on the wire")
+    (is (= "a.com" (get-in reparsed [:headers "host"])))
+    (is (= "k" (get-in reparsed [:headers "x-keep"])))
+    (is (= ["one" "two"] (get-in reparsed [:headers "x-tag"]))
+        "repeated headers other than the removed one stay repeated")
+    (is (= "4" (get-in reparsed [:headers "content-length"])))
+    (is (= "body" (:body reparsed)))
+    (is (= removed reparsed) "round-trip after removal must be stable")
+    ;; removing a non-existent header is an idempotent no-op
+    (is (= removed (http/remove-header removed "x-del")))
+    ;; removing a repeated header drops the whole vector, not just one value
+    (let [r2 (http/remove-header removed "X-Tag")]
+      (is (nil? (get-in r2 [:headers "x-tag"])))
+      (is (= (http/render-request r2)
+             (http/render-request (http/parse-request (http/render-request r2))))
+          "wire stays stable after dropping a repeated header"))))
