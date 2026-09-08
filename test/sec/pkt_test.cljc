@@ -27,8 +27,10 @@
 (defn- pcap-wrap
   "Wrap one frame into classic pcap bytes. :endian :little (default) or :big.
    :linktype overrides the global-header linktype (default 1 = Ethernet);
-   :magic overrides the 4-byte magic number."
-  [frame-bytes & [{:keys [endian magic linktype] :or {endian :little linktype 1}}]]
+   :magic overrides the 4-byte magic number; :caplen writes only the record
+   header's caplen field (origlen keeps the true frame size) so lying /
+   truncated-record containers can be built (issue #30)."
+  [frame-bytes & [{:keys [endian magic linktype caplen] :or {endian :little linktype 1}}]]
   (let [n (count frame-bytes)
         le32 (fn [v] [(bit-and v 0xff) (bit-and (bit-shift-right v 8) 0xff)
                       (bit-and (bit-shift-right v 16) 0xff) (bit-and (bit-shift-right v 24) 0xff)])
@@ -42,7 +44,7 @@
                     (w32 0) (w32 262144)          ; thiszone, snaplen
                     (w32 linktype))               ; linktype (1 = Ethernet)
         rec (concat (w32 1700000000) (w32 123456)
-                    (w32 n) (w32 n))]
+                    (w32 (or caplen n)) (w32 n))]
     (byte-array* (concat hdr rec frame-bytes))))
 
 (deftest hex-test
@@ -358,3 +360,58 @@
                  (:ip fr))
               (str endian "-endian pcap must not perturb IPv4 header parsing"))
           (is (= 443 (get-in fr [:l4 :src-port]))))))))
+
+;; conformance ③ (robustness side, issue #30): a pcap record header whose
+;; caplen lies — larger than the bytes that actually remain in the file —
+;; must be rejected LOUDLY, never dissected from out-of-bounds reads.
+;; Measured on main @ c5132e4 (throwaway nbb probes + RED run):
+;;  - caplen 60 over a 50-byte frame: NO throw; a full phantom frame map is
+;;    returned (:caplen 60, :origlen 50) — out-of-range aget reads come back
+;;    undefined and silently degrade to 0-valued fields
+;;  - caplen 0xffffffff: bare RangeError "Invalid array length", ex-data nil
+;;    (measured in the RED run before the fix)
+;;  - caplen 1: the record walk desyncs into the frame bytes as if they were
+;;    headers and chokes on a phantom huge caplen — a probe of this shape
+;;    hit the 120s timeout without finishing. NOT an out-of-bounds read at
+;;    the header level (1 <= remaining), so the guard below does not cover
+;;    it; issue #30 tracks the desync class (caplen < Ethernet header).
+;; The guard must carry {:kind ::pkt/truncated-record :caplen :available}
+;; like the linktype rejection does (:kind ::pkt/linktype), so failures are
+;; classified rather than guessed.
+(deftest dissect-pcap-caplen-exceeds-remaining-test
+  (doseq [[label caplen] [["overrun-by-10" 60]   ; lies 10 past the frame
+                          ["overrun-by-1" 51]]]  ; smallest possible lie
+    (let [pc (pcap-wrap (eth+ipv4+tcp-bytes) {:caplen caplen})
+          err (try
+                (pkt/dissect-pcap pc)
+                (catch :default e e))]
+      (is (instance? js/Error err)
+          (str label ": caplen " caplen " > remaining bytes must throw, not dissect"))
+      (when (instance? js/Error err)
+        (is (= :sec.pkt/truncated-record (:kind (ex-data err)))
+            (str label ": must throw ex-info {:kind :sec.pkt/truncated-record}, got: "
+                 (ex-message err)))
+        (is (= caplen (:caplen (ex-data err)))
+            (str label ": ex-data must carry the lying caplen"))
+        (is (= 50 (:available (ex-data err)))
+            (str label ": ex-data must carry the bytes actually available")))))
+  ;; the caplen=0/1 desync class is NOT covered here by design: those are
+  ;; within bounds, so the guard lets them through — residual structure TBD
+  ;; in issue #30.
+  )
+
+;; boundary control: caplen <= remaining bytes must NOT be rejected —
+;; caplen == file remainder is the normal path, and caplen < origlen is
+;; legal snaplen-style truncation (measured on main @ c5132e4: parses the
+;; prefix fine). The guard rejects lies, not truncated captures.
+(deftest dissect-pcap-caplen-within-bounds-control-test
+  (let [full (eth+ipv4+tcp-bytes)
+        n (count full)]
+    (is (= 1 (count (pkt/dissect-pcap (pcap-wrap full {:caplen n}))))
+        "caplen == remaining must parse normally")
+    (let [fr (first (pkt/dissect-pcap (pcap-wrap full {:caplen 40})))]
+      (is (= 1 (:frame fr)))
+      (is (= 40 (:caplen fr)))
+      (is (= 50 (:origlen fr)))
+      (is (= 80 (get-in fr [:l4 :dst-port]))
+          "snaplen-style caplen < origlen must still dissect the prefix"))))
