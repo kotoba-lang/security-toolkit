@@ -21,16 +21,29 @@ tooling を pure `.cljc` で**。ADR-2609051100（superproject `90-docs/adr/`）
 
 ```clojure
 (require '[sec.scan :as scan])
-(scan/connect-scan "127.0.0.1" [80 443 8080] {:provider my-provider})
-;=> [{:port 80  :state :open} {:port 443 :state :closed} ...]
+
+;; spec は map（:hosts / :ports）。provider は inject 必須（deny-by-default）。
+;; ここでは test 用の sec.io.fake を使う。実運用では sec.io/IOProvider を実装して渡す。
+(scan/connect-scan {:hosts ["127.0.0.1"] :ports [80 443 8080]}
+                   {:provider my-provider})
+;=> [{:host "127.0.0.1", :port 80,   :state :open}
+;    {:host "127.0.0.1", :port 443,  :state :closed}
+;    {:host "127.0.0.1", :port 8080, :state :filtered}]
 
 (require '[sec.pkt :as pkt])
-(pkt/dissect-pcap (slurp "capture.pcap"))
-;=> [{:frame 1 :eth {...} :ip {...} :tcp {...}} ...]
+
+;; pcap ファイルのバイト列（int 0..255 の array）。読み込み自体は seam の外。
+;; slurp 等の file I/O は pure `.cljc` に存在しない。
+(pkt/dissect-pcap bytes)
+;=> [{:frame 1, :ts-sec 1700000000, :ts-usec 123456, :ts-unit :us,
+;     :caplen 50, :origlen 50, :eth {...}, :ip {...}, :l4 {...}}]
 
 (require '[sec.http :as http])
+
 (http/parse-request "GET / HTTP/1.1\r\nHost: x\r\n\r\n")
-;=> {:method "GET" :path "/" :headers {"Host" "x"} :body ""}
+;=> {:method "GET", :path "/", :version "HTTP/1.1",
+;    :headers {"host" "x"}, :body ""}
+;; （header 名は lower-case になる。同名 header は vector 値に重复集約）
 ```
 
 ## test
