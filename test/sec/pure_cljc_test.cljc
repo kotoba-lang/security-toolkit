@@ -18,7 +18,7 @@
   docstring-text negative controls so prose like \"Port/host scanner\" in
   src docstrings is not misread as interop."
   (:require [clojure.test :refer [deftest is]]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [clojure.set :as set]))
 
 ;; nbb test runner: reading src files here is test-side only; production
@@ -116,7 +116,7 @@
 ;; \"Scan/pkt/http logic\") contains Caps/slash text that call-position
 ;; anchoring must NOT flag.
 (def clean-forms
-  ["(ns sec.pkt\n  (:require [clojure.string :as str] [sec.io :as io]))"
+  ["(ns sec.pkt\n  (:require [kotoba.lang.text :as str] [sec.io :as io]))"
    "(defn classify [x] (cond (= x 1) :open :else :closed))"
    "(defn word [b o] (bit-and (bit-shift-right (aget b o) 8) 0xff))"
    "(let [{:keys [a b]} m] (str a \"-\" b))"
