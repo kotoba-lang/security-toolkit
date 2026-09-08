@@ -198,7 +198,16 @@
               ts-frac (rd32 (+ off 4))
               caplen  (rd32 (+ off 8))
               origlen (rd32 (+ off 12))
-              data-off (+ off 16)]
+              data-off (+ off 16)
+              ;; caplen must fit inside the file: trusting a lying header
+              ;; reads out of bounds (phantom fields) or allocates a
+              ;; (range caplen)-sized array from garbage (issue #30)
+              available (- total data-off)]
+          (when (> caplen available)
+            (throw (ex-info "truncated pcap record: caplen exceeds remaining bytes"
+                            {:kind ::truncated-record
+                             :caplen caplen
+                             :available available})))
           (vswap! frames conj
                   (merge {:frame (inc (count @frames))
                           :ts-sec ts-sec
