@@ -2,7 +2,7 @@
   "HTTP request/response analysis + replay composition — the burpsuite
   equivalent slice. Pure `.cljc`: parse, mutate, re-serialize. Sending a
   composed request goes through a `sec.io` provider (ADR-2609051100)."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [sec.io :as io]))
 
 ;; ── request parsing ─────────────────────────────────────────────────────
@@ -36,7 +36,7 @@
         headers (reduce
                   (fn [acc line]
                     (if-let [i (str/index-of line ":")]
-                      (let [k (str/lower-case (str/trim (subs line 0 i)))
+                      (let [k (str/lower (str/trim (subs line 0 i)))
                             v (str/trim (subs line (inc i)))]
                         (update acc k (fn [old] (if old (if (vector? old) (conj old v) [old v]) v))))
                       acc))
@@ -60,7 +60,7 @@
         headers (reduce
                   (fn [acc line]
                     (if-let [i (str/index-of line ":")]
-                      (let [k (str/lower-case (str/trim (subs line 0 i)))
+                      (let [k (str/lower (str/trim (subs line 0 i)))
                             v (str/trim (subs line (inc i)))]
                         (update acc k (fn [old] (if old (if (vector? old) (conj old v) [old v]) v))))
                       acc))
@@ -77,11 +77,11 @@
 (defn set-header
   "Set (replace) a header on a parsed request map. Pure."
   [req k v]
-  (assoc-in req [:headers (str/lower-case k)] v))
+  (assoc-in req [:headers (str/lower k)] v))
 
 (defn remove-header
   [req k]
-  (update req :headers dissoc (str/lower-case k)))
+  (update req :headers dissoc (str/lower k)))
 
 (defn set-body
   "Replace the body and fix Content-Length (or add it if absent)."

@@ -5,7 +5,7 @@
   dissects Ethernet / IPv4 / TCP / UDP into plain EDN maps.
   Raw capture (live sniffing) is out of scope here — provider seam only;
   this namespace consumes already-captured bytes (ADR-2609051100)."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 ;; ── byte helpers ────────────────────────────────────────────────────────
 (defn- u8  [b off] (aget b off))
