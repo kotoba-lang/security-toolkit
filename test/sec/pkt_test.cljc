@@ -311,3 +311,50 @@
             (str endian "-endian pcap: TCP seq is network order, not file order"))
         (is (= 0x12345678 (get-in f [:l4 :ack]))
             (str endian "-endian pcap: TCP ack is network order, not file order"))))))
+
+;; RFC 791: version/ihl/total-length/ttl are exposed by dissect-ipv4 but had
+;; ZERO value-level assertions (same gap class as the TCP seq/ack bug fixed in
+;; PR #28). Build an ihl-6 frame (24-byte IPv4 header with 4 bytes of options)
+;; so the test pins the fields AND proves l4 dissection uses :ihl for the
+;; header length instead of a hardcoded 20. All expected values below were
+;; measured live against main @ 45ad36f.
+(deftest dissect-ipv4-header-fields-golden-test
+  (let [eth [0x00 0x11 0x22 0x33 0x44 0x55   ; dst mac
+             0x66 0x77 0x88 0x99 0xaa 0xbb   ; src mac
+             0x08 0x00]                       ; IPv4
+        ip  [0x46 0x00 0x00 0x2c              ; version 4 / ihl 6, tos, total len 44
+             0x00 0x00 0x00 0x00              ; id, flags/frag (not exposed)
+             0x2a 0x06 0x00 0x00              ; ttl 42, proto 6 (TCP), csum 0
+             0xc0 0xa8 0x01 0x64              ; src 192.168.1.100
+             0xc0 0xa8 0x01 0xc8              ; dst 192.168.1.200
+             0x01 0x01 0x00 0x00]             ; 4 bytes of IPv4 options
+        tcp [0x01 0xbb 0x00 0x5c              ; 443 -> 92 (asymmetric ports)
+             0x00 0x00 0x00 0x2a              ; seq 42
+             0x00 0x00 0x00 0x00              ; ack 0
+             0x50 0x10 0x01 0x00]             ; off 5, ACK, win 256
+        b (byte-array* (concat eth ip tcp))
+        f (pkt/dissect-frame b)]
+    (testing "exposed IPv4 header fields pin to wire values"
+      (is (= 4 (get-in f [:ip :version])))
+      (is (= 24 (get-in f [:ip :ihl]))
+          "ihl 6 means a 24-byte header, not the default 20")
+      (is (= 44 (get-in f [:ip :total-length])))
+      (is (= 42 (get-in f [:ip :ttl])))
+      (is (= "TCP" (get-in f [:ip :protocol])))
+      (is (= "192.168.1.100" (get-in f [:ip :src])))
+      (is (= "192.168.1.200" (get-in f [:ip :dst]))))
+    (testing "l4 offset follows :ihl (options skipped, no hardcoded 20)"
+      ;; TCP header starts at 14 + 24 = 38; if the dissecter assumed ihl 5 it
+      ;; would read the option bytes 01 01 00 00 as ports (257 -> 0)
+      (is (= 443 (get-in f [:l4 :src-port])))
+      (is (= 92 (get-in f [:l4 :dst-port])))
+      (is (= 42 (get-in f [:l4 :seq])))
+      (is (= 20 (get-in f [:l4 :data-offset]))))
+    (testing "same values through the pcap container, both endiannesses"
+      (doseq [endian [:little :big]]
+        (let [fr (first (pkt/dissect-pcap (pcap-wrap b {:endian endian})))]
+          (is (= {:version 4 :ihl 24 :total-length 44 :ttl 42
+                  :protocol "TCP" :src "192.168.1.100" :dst "192.168.1.200"}
+                 (:ip fr))
+              (str endian "-endian pcap must not perturb IPv4 header parsing"))
+          (is (= 443 (get-in fr [:l4 :src-port]))))))))
