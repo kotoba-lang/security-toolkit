@@ -273,3 +273,41 @@
   (is (= 1 (count (pkt/dissect-pcap
                    (pcap-wrap (eth+ipv4+tcp-bytes) {:linktype 1}))))
       "linktype 1 must remain accepted via the same pcap-wrap path"))
+
+;; RFC 793 §3.1: TCP seq/ack are 32-bit fields in network byte order (big
+;; endian) on the wire, regardless of pcap file endianness. Build a frame with
+;; ASYMMETRIC seq/ack so a little-endian read (byte-reversal) cannot pass
+;; silently: seq bytes 00 00 00 01 read LE would be 16777216, not 1.
+(deftest dissect-tcp-seqack-network-byte-order-test
+  (let [eth [0x00 0x11 0x22 0x33 0x44 0x55   ; dst mac
+             0x66 0x77 0x88 0x99 0xaa 0xbb   ; src mac
+             0x08 0x00]
+        ip  [0x45 0x00 0x00 0x30             ; ihl 5, total len 48
+             0x00 0x01 0x00 0x00
+             0x40 0x06 0x00 0x00             ; ttl 64, proto 6 (TCP)
+             0x0a 0x00 0x00 0x01
+             0x0a 0x00 0x00 0x02]
+        tcp [0x1f 0x90 0x00 0x50             ; 8080 -> 80
+             0x00 0x00 0x00 0x01             ; seq  = 1 (network order)
+             0x12 0x34 0x56 0x78             ; ack  = 0x12345678
+             0x50 0x18 0x20 0x00             ; off 5, PSH+ACK, win 8192
+             0x00 0x00 0x00 0x00]
+        b (byte-array* (concat eth ip tcp))
+        l4 (:l4 (pkt/dissect-frame b))]
+    (is (= 1 (:seq l4))
+        "seq written in network byte order must read back as 1, not byte-reversed")
+    (is (= 0x12345678 (:ack l4))
+        "ack written in network byte order must read back as 0x12345678")
+    ;; neighbors already read BE must not regress
+    (is (= 8080 (:src-port l4)))
+    (is (= 80 (:dst-port l4)))
+    (is (= 8192 (:window l4)))
+    (is (= 20 (:data-offset l4)))
+    ;; same values must flow through the pcap container path (issue lineage:
+    ;; container endianness must not leak into wire-header parsing)
+    (doseq [endian [:little :big]]
+      (let [f (first (pkt/dissect-pcap (pcap-wrap b {:endian endian})))]
+        (is (= 1 (get-in f [:l4 :seq]))
+            (str endian "-endian pcap: TCP seq is network order, not file order"))
+        (is (= 0x12345678 (get-in f [:l4 :ack]))
+            (str endian "-endian pcap: TCP ack is network order, not file order"))))))

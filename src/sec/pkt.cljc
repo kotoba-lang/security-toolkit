@@ -9,10 +9,9 @@
 
 ;; ── byte helpers ────────────────────────────────────────────────────────
 (defn- u8  [b off] (aget b off))
-(defn- u16le [b off] (+ (* (aget b off) 256) (aget b (inc off))))
 (defn- u16be [b off] (+ (* (aget b off) 256) (aget b (inc off))))
-(defn- u32le [b off] (let [a (u8 b off) bb (u8 b (inc off)) c (u8 b (+ off 2)) d (u8 b (+ off 3))]
-                       (+ (* d 16777216) (* c 65536) (* bb 256) a)))
+(defn- u32be [b off] (let [a (u8 b off) bb (u8 b (inc off)) c (u8 b (+ off 2)) d (u8 b (+ off 3))]
+                       (+ (* a 16777216) (* bb 65536) (* c 256) d)))
 (defn- hex
   ([n] (hex n 2))
   ([n width]
@@ -88,8 +87,8 @@
   [b off]
   {:src-port (u16be b off)
    :dst-port (u16be b (+ off 2))
-   :seq (u32le b (+ off 4))
-   :ack (u32le b (+ off 8))
+   :seq (u32be b (+ off 4))
+   :ack (u32be b (+ off 8))
    :data-offset (* (int (/ (u8 b (+ off 12)) 16)) 4)
    :flags {:syn (pos? (bit-and (u8 b (+ off 13)) 0x02))
            :ack (pos? (bit-and (u8 b (+ off 13)) 0x10))
@@ -183,7 +182,6 @@
   silently misread as microseconds (issue #9)."
   [b]
   (let [{endian :endian, ts-unit :ts-unit} (detect-endianness b)
-        rd16 (if (= endian :little) u16le u16be)
         rd32 (fn [off] (if (= endian :little)
                          (let [a (u8 b off) bb (u8 b (inc off)) c (u8 b (+ off 2)) d (u8 b (+ off 3))]
                            (+ (* d 16777216) (* c 65536) (* bb 256) a))
