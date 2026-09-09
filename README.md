@@ -23,7 +23,7 @@ tooling を pure `.cljc` で**。ADR-2609051100（superproject `90-docs/adr/`）
 (require '[sec.scan :as scan])
 
 ;; spec は map（:hosts / :ports）。provider は inject 必須（deny-by-default）。
-;; ここでは test 用の sec.io.fake を使う。実運用では sec.io/IOProvider を実装して渡す。
+;; ここでは test suite 同梱の test 側 fake (sec.io.fake/fake-provider、main には無い) を使う。実運用では sec.io/IOProvider を実装して渡す。
 (scan/connect-scan {:hosts ["127.0.0.1"] :ports [80 443 8080]}
                    {:provider my-provider})
 ;=> [{:host "127.0.0.1", :port 80,   :state :open}
