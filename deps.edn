@@ -4,7 +4,8 @@
         ;; tools.deps takes the NEWEST sha it is shown, so without a floor here
         ;; this repo silently rides whatever a sibling happens to name.
         io.github.kotoba-lang/text {:git/sha "73bdb13ae7a3d004b44bca08be03a3191157a38f"}
-       }  ;; pure .cljc — runtime deps 無し。provider は注入。
+       }  ;; pure .cljc — provider は注入。非 .cljc 依存は無いが、文字列処理は
+        ;; kotoba.lang/text に寄せている (上記 pin)。
  :aliases
  {:test {:extra-paths ["test"]
          :extra-deps {}}}}
