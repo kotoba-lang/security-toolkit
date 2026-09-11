@@ -1,6 +1,6 @@
 ;; nbb does not read deps.edn — it resolves its own nbb.edn from the cwd.
 ;; Since ecdfee0 (clojure.string -> kotoba.lang.text) the suite requires
-;; kotoba.lang.text, and `nbb --classpath src:test test/run.cljs` failed with
+;; kotoba.lang.text, and `nbb --classpath src:test test/run.cljk` failed with
 ;; "Could not find namespace: kotoba.lang.text" on main. This mirrors the
 ;; coordinate deps.edn pins (8117c9d): same sha floor, same reason — tools.deps
 ;; takes the newest sha it is shown, so an unpinned ride is silent drift.
