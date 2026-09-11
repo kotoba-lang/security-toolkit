@@ -49,5 +49,5 @@ tooling を pure `.cljc` で**。ADR-2609051100（superproject `90-docs/adr/`）
 ## test
 
 ```bash
-nbb --classpath src:test test/run.cljk
+kbb --backend sci --classpath src:test test/run.cljk
 ```
