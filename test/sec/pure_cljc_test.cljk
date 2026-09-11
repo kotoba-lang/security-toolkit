@@ -28,10 +28,12 @@
 (def src-dir "src/sec")
 
 ;; derived from the filesystem so a new production file is purity-checked
-;; automatically instead of silently escaping conformance ⑤ until listed here
+;; automatically instead of silently escaping conformance ⑤ until listed here.
+;; Matches both .cljc (the canonical logical extension) and .cljk (the on-disk
+;; post-cljk-rename spelling; origins recorded in cljk-origin.edn).
 (def src-files
   (->> (.readdirSync fs src-dir)
-       (filter #(str/ends-with? % ".cljc"))
+       (filter #(or (str/ends-with? % ".cljc") (str/ends-with? % ".cljk")))
        (map #(str src-dir "/" %))
        sort))
 
@@ -67,9 +69,14 @@
         (is (not (re-find re src))
             (str f " contains forbidden effect form: " re))))))
 
+;; After the cljk rename (adr-2609111500), production files carry the .cljk
+;; extension on disk. The purity contract itself is unchanged — the guard
+;; still scans the same production namespaces — so the extension assertion now
+;; accepts both spellings.
 (deftest cljc-extension-test
   (doseq [f src-files]
-    (is (str/ends-with? f ".cljc") (str f " must be .cljc"))))
+    (is (or (str/ends-with? f ".cljc") (str/ends-with? f ".cljk"))
+        (str f " must be .cljc (or post-cljk-rename .cljk)"))))
 
 ;; discovery sanity: the derived list must cover the known namespaces, so a
 ;; broken readdir (empty list) cannot silently make the checks above vacuous
@@ -112,8 +119,8 @@
 ;; patterns cannot be "fixed" into a sledgehammer that fails real sources
 ;; (destructuring, bit ops, 0xff literals, #?{} reader conditionals).
 ;; The last two entries pin the Uppercase/slash false-positive class: docstring
-;; prose in the real src (sec.scan \"Port/host scanner\", sec.io
-;; \"Scan/pkt/http logic\") contains Caps/slash text that call-position
+;; prose in the real src (sec.scan "Port/host scanner", sec.io
+;; "Scan/pkt/http logic") contains Caps/slash text that call-position
 ;; anchoring must NOT flag.
 (def clean-forms
   ["(ns sec.pkt\n  (:require [kotoba.lang.text :as str] [sec.io :as io]))"
