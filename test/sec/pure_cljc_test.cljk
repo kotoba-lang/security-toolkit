@@ -74,8 +74,8 @@
 ;; discovery sanity: the derived list must cover the known namespaces, so a
 ;; broken readdir (empty list) cannot silently make the checks above vacuous
 (deftest src-discovery-covers-known-namespaces-test
-  (is (set/subset? #{"src/sec/scan.cljc" "src/sec/pkt.cljc"
-                     "src/sec/http.cljc" "src/sec/io.cljc"}
+  (is (set/subset? #{"src/sec/scan.cljk" "src/sec/pkt.cljk"
+                     "src/sec/http.cljk" "src/sec/io.cljk"}
                    (set src-files))
       "src file discovery must include the known production namespaces"))
 
