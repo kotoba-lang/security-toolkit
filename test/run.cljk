@@ -1,4 +1,4 @@
-#!/usr/bin/env nbb
+#!/usr/bin/env kbb
 ;; test runner for security-toolkit (nbb, per workspace nbb-only rule)
 (require '[clojure.test :as t]
          'sec.scan-test
