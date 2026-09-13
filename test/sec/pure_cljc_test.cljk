@@ -29,11 +29,11 @@
 
 ;; derived from the filesystem so a new production file is purity-checked
 ;; automatically instead of silently escaping conformance ⑤ until listed here.
-;; Matches both .cljc (the canonical logical extension) and .cljk (the on-disk
-;; post-cljk-rename spelling; origins recorded in cljk-origin.edn).
+;; Per ADR-2609111500 (accepted, 2026-09-11) the Clojure-source rename is
+;; one-way: `.clj`/`.cljs`/`.cljc` are all renamed `.cljk` with NO mirror
+;; extension, so the on-disk spelling for production files is .cljk only.
 (def src-files
   (->> (.readdirSync fs src-dir)
-       (filter #(or (str/ends-with? % ".cljc") (str/ends-with? % ".cljk")))
        (map #(str src-dir "/" %))
        sort))
 
@@ -50,7 +50,7 @@
    #"\bprocess\.env\b"         ; ambient env access
    #"\bchild_process\b"        ; subprocess
    #"\bjs/"                    ; cljs host interop (js/parseInt and friends)
-   #"#js[\s\[\{]"              ; cljs #js literal
+   #"#js[\s\[{]"               ; cljs #js literal
    #"\bjs\*"                   ; cljs js* reader-level host interop
    #"\bgoog\."                 ; Closure libs — cljs-only, breaks JVM .cljc
    #"\(\.[-a-zA-Z]"            ; (.method obj) / (.-field obj) member access
@@ -69,14 +69,15 @@
         (is (not (re-find re src))
             (str f " contains forbidden effect form: " re))))))
 
-;; After the cljk rename (adr-2609111500), production files carry the .cljk
-;; extension on disk. The purity contract itself is unchanged — the guard
-;; still scans the same production namespaces — so the extension assertion now
-;; accepts both spellings.
-(deftest cljc-extension-test
+;; Per ADR-2609111500 the rename is one-way with no mirror extension, so the
+;; on-disk production spelling is .cljk only. The "accept both spellings"
+;; tolerance from the post-rename transition tick is retired: a stray .cljc
+;; production file would break the nbb/kbb require path (they resolve .cljk)
+;; and must fail loudly, not pass silently.
+(deftest cljk-extension-test
   (doseq [f src-files]
-    (is (or (str/ends-with? f ".cljc") (str/ends-with? f ".cljk"))
-        (str f " must be .cljc (or post-cljk-rename .cljk)"))))
+    (is (str/ends-with? f ".cljk")
+        (str f " must be .cljk (ADR-2609111500 one-way rename, no mirror)"))))
 
 ;; discovery sanity: the derived list must cover the known namespaces, so a
 ;; broken readdir (empty list) cannot silently make the checks above vacuous
