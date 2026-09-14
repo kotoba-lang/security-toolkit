@@ -1,5 +1,5 @@
 #!/usr/bin/env kbb
-;; test runner for security-toolkit (nbb, per workspace nbb-only rule)
+;; test runner for security-toolkit (kbb --backend sci, per ADR-2609112000)
 (require '[clojure.test :as t]
          'sec.scan-test
          'sec.http-test
