@@ -21,7 +21,7 @@
             [kotoba.lang.text :as str]
             [clojure.set :as set]))
 
-;; nbb test runner: reading src files here is test-side only; production
+;; test runner: reading src files here is test-side only; production
 ;; sources themselves must contain none of these effect forms.
 (def fs (js/require "fs"))
 
