@@ -137,3 +137,28 @@
   (doseq [src clean-forms]
     (is (not-any? #(re-find % src) forbidden)
         (str "clean pure form must not be flagged: " src))))
+
+;; The test runner (test/run.cljk) hardcodes its namespaces: a new *_test.cljk
+;; file under test/sec would silently never execute (measured 2026-09-18: a
+;; probe file left on disk left the suite at 47/315, 0 failures). Every
+;; discovered test file must therefore be registered in the runner source.
+(def test-dir "test/sec")
+
+(def test-files
+  (->> (.readdirSync fs test-dir)
+       (filterv #(str/ends-with? % "_test.cljk"))
+       sort))
+
+(def runner-source
+  (read-src "test/run.cljk"))
+
+(defn- file->ns-name [f]
+  (str "sec." (str/replace (subs f 0 (- (count f) 10)) "_" "-")))
+
+(deftest test-runner-registers-every-test-file-test
+  (is (pos? (count test-files))
+      "test file discovery must not be empty (broken readdir guard)")
+  (doseq [f test-files]
+    (let [ns-name (file->ns-name f)]
+      (is (str/includes? runner-source ns-name)
+          (str "test/run.cljk must run the test namespace: " ns-name)))))
