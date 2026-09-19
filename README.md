@@ -1,7 +1,7 @@
 # security-toolkit
 
 `kotoba-lang/security-toolkit` — **nmap / wireshark / burpsuite に相当する security
-tooling を pure `.cljc` で**。ADR-2609051100（superproject `90-docs/adr/`）。
+tooling を pure `.cljk`(旧 `.cljc`) で**。ADR-2609051100（superproject `90-docs/adr/`）。
 
 3 tool は namespace 分離:
 - `sec.scan` — port/host scanner（nmap 相当。TCP connect/SYN 判定は provider seam）
@@ -10,7 +10,7 @@ tooling を pure `.cljc` で**。ADR-2609051100（superproject `90-docs/adr/`）
 
 ## 設計原則
 
-- **pure `.cljc`。ambient authority を持たない。** 生 socket / raw capture /
+- **pure `.cljk`(旧 `.cljc`)。ambient authority を持たない。** 生 socket / raw capture /
   TLS upstream は `sec.io` protocol（`open-conn` / `send` / `recv` / `close`）を
   通して注入する。JVM/nbb 用の参照 provider は `sec.io.jvm` / `sec.io.node`。
 - scan 対象への実接続は op 側 policy gate（`:approval-required` 既定、
@@ -33,7 +33,7 @@ tooling を pure `.cljc` で**。ADR-2609051100（superproject `90-docs/adr/`）
 (require '[sec.pkt :as pkt])
 
 ;; pcap ファイルのバイト列（int 0..255 の array）。読み込み自体は seam の外。
-;; slurp 等の file I/O は pure `.cljc` に存在しない。
+;; slurp 等の file I/O は pure `.cljk` に存在しない。
 (pkt/dissect-pcap bytes)
 ;=> [{:frame 1, :ts-sec 1700000000, :ts-usec 123456, :ts-unit :us,
 ;     :caplen 50, :origlen 50, :eth {...}, :ip {...}, :l4 {...}}]
