@@ -109,3 +109,21 @@
                                         {:host "h"})]]]
       (is (thrown-with-msg? js/Error #"provider" (thunk))
           (str name " must deny without :provider")))))
+
+;; conformance ① (seam enforcement, callback layer): :on-result is a
+;; documented connect-scan option (scan.cljk docstring) that fires once per
+;; result. It had zero test coverage — a broken/missing callback path would
+;; pass silently. This pins that :on-result is invoked once per result, in
+;; plan order, with the same {:host :port :state} maps the scan returns, and
+;; that the callback is an observation side-channel: it must not mutate or
+;; filter the returned results.
+(deftest on-result-callback-test
+  (let [seen (atom [])
+        rs (scan/connect-scan {:hosts ["h"] :ports [80 22]}
+                              {:provider p
+                               :on-result (fn [r] (swap! seen conj r))})]
+    (is (= 2 (count rs)))
+    (is (= 2 (count @seen))
+        "on-result must fire once per result")
+    (is (= rs @seen)
+        "callback receives the same result maps the scan returns")))
