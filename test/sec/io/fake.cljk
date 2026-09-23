@@ -2,8 +2,7 @@
   "Fake IOProvider for tests. Deterministic, no real sockets.
   Configured with a map of host:port -> response string, and an optional
   set of refused ports. Records every send-bytes call so tests can assert
-  the exact wire bytes through the seam (see RequestLog). Also records
-  every timeout-ms value handed to recv-bytes (see recorded-timeouts).")
+  the exact wire bytes through the seam (see RequestLog)."
   (:require [sec.io :as io]))
 
 (defprotocol RequestLog
