@@ -153,3 +153,22 @@
       (is (= (http/render-request r2)
              (http/render-request (http/parse-request (http/render-request r2))))
           "wire stays stable after dropping a repeated header"))))
+
+;; conformance ④ (opts seam): send-request documents :timeout-ms in opts
+;; (default 5000, applied at recv-bytes) but it had ZERO test coverage —
+;; the only opts entry never pinned. The fake now records every timeout-ms
+;; value handed to recv-bytes. Pins that an explicit :timeout-ms reaches
+;; the provider unchanged, and that omitted opts fall through to the 5000
+;; default (send-request is the sole caller; the fake itself never invents
+;; the value).
+(deftest send-request-timeout-ms-passthrough-test
+  (let [req (http/parse-request "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")]
+    (let [p (fake/fake-provider {:responses {"example.com:80" "HTTP/1.1 200 OK\r\n\r\nok"}})
+          resp (http/send-request req {:provider p :host "example.com" :port 80 :timeout-ms 1234})]
+      (is (= 200 (:status resp)) "request must still complete normally")
+      (is (= [1234] (fake/recorded-timeouts p))
+          "explicit :timeout-ms must reach recv-bytes unchanged, exactly once"))
+    (let [p (fake/fake-provider {:responses {"example.com:80" "HTTP/1.1 200 OK\r\n\r\nok"}})]
+      (http/send-request req {:provider p :host "example.com" :port 80})
+      (is (= [5000] (fake/recorded-timeouts p))
+          "omitted :timeout-ms must fall through to the documented 5000 default"))))

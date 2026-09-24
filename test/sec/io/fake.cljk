@@ -10,7 +10,10 @@
   Implemented by fake-provider. The log survives close-conn, so tests can
   inspect traffic after a full send/connect run has closed its conns."
   (recorded-requests [this]
-    "Vector of {:conn-id, :bytes} in send order (empty if nothing was sent)."))
+    "Vector of {:conn-id, :bytes} in send order (empty if nothing was sent).")
+  (recorded-timeouts [this]
+    "Vector of the timeout-ms values passed to recv-bytes, in order
+    (empty if recv-bytes was never called)."))
 
 (defn fake-provider
   "opts: {:responses {\"host:port\" \"raw response...\"}
@@ -22,7 +25,8 @@
     :or {responses {} refused #{} silent #{} unknown #{}}}]
   (let [id (atom 0)
         open-conns (atom {})
-        req-log (atom [])]
+        req-log (atom [])
+        timeout-log (atom [])]
     (reify
       io/IOProvider
       (open-conn [_ host port]
@@ -37,7 +41,8 @@
         (swap! open-conns assoc-in [conn-id :request] bytes)
         (swap! req-log conj {:conn-id conn-id :bytes bytes})
         {:bytes-sent (count bytes)})
-      (recv-bytes [_ conn-id _timeout-ms]
+      (recv-bytes [_ conn-id timeout-ms]
+        (swap! timeout-log conj timeout-ms)
         (let [{:keys [host port]} (get @open-conns conn-id)]
           (if-let [resp (get responses (str host ":" port))]
             {:bytes resp :closed? true}
@@ -46,4 +51,5 @@
         (swap! open-conns dissoc conn-id)
         {})
       RequestLog
-      (recorded-requests [_] @req-log))))
+      (recorded-requests [_] @req-log)
+      (recorded-timeouts [_] @timeout-log))))
