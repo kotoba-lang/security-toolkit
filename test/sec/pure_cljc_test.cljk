@@ -17,9 +17,9 @@
   a dot) and Class/method has no js/ marker. Both are pinned now, with
   docstring-text negative controls so prose like \"Port/host scanner\" in
   src docstrings is not misread as interop."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [kotoba.lang.text :as str]
-            [clojure.set :as set]))
+            [kotoba.lang.coll :as set]))
 
 ;; test runner: reading src files here is test-side only; production
 ;; sources themselves must contain none of these effect forms.

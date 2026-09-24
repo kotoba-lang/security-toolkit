@@ -1,5 +1,5 @@
 (ns sec.http-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [sec.http :as http]
             [sec.io.fake :as fake]))
 

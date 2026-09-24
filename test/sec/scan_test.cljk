@@ -1,5 +1,5 @@
 (ns sec.scan-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [sec.scan :as scan]
             [sec.http :as http]
             [sec.io :as io]

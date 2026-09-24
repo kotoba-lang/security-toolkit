@@ -1,6 +1,6 @@
 #!/usr/bin/env kbb
 ;; test runner for security-toolkit (kbb --backend sci, per ADR-2609112000)
-(require '[clojure.test :as t]
+(require '[kotoba.test :as t]
          'sec.scan-test
          'sec.http-test
          'sec.pkt-test
