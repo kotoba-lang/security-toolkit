@@ -7,11 +7,11 @@
       "enabled": true,
       "enabled_toolsets": null,
       "id": "023434d42feb",
-      "model": "qwen3.8-27b-whitehacker",
+      "model": "murakumo/free",
       "name": "sec-toolkit-maturity-tick",
       "no_agent": false,
       "prompt": "kotoba-lang/security-toolkit 成熟度 bot。SOUL.md の「1 反復 = 1 finding」に従う。cd ~/github/com-junkawasaki/orgs/kotoba-lang/security-toolkit し、git fetch + ff-only 同期後に nbb --classpath src:test test/run.cljs で全テスト合否を測定。赤なら最優先で 1 件、branch bot/sec-toolkit-<日時> から PR (main 直 push 禁止)。緑なら conformance 項目 ①provider-deny ②scan 状態分類 ③pcap golden ④http round-trip ⑤pure-cljc 静的検査 のうち test が無い行に最小 test を 1 件追加して PR。報告: テスト合否 / conformance ①〜⑤ 現在地 / 出した PR・issue / 次の 1 finding。誇張なし。",
-      "provider": "kotoba",
+      "provider": "murakumo",
       "schedule": {
         "kind": "interval",
         "minutes": 720,
