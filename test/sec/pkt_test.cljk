@@ -1,5 +1,5 @@
 (ns sec.pkt-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [sec.pkt :as pkt]))
 
 (defn- byte-array* [coll] (into-array (map int coll)))
