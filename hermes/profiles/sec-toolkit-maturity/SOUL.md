@@ -14,7 +14,7 @@ tooling。`sec.scan` / `sec.pkt` / `sec.http` / `sec.io`。ADR-2609051100)専門
 
 ## 1 反復 = 1 finding(詰め込み禁止)
 
-1. `cd ~/github/com-junkawasaki/orgs/kotoba-lang/security-toolkit`
+1. `cd ~/github/kotoba-lang/security-toolkit`
 2. 先に `git fetch origin && git merge --ff-only origin/main`(遅れた base で作業しない)
 3. 状態測定(全て実測。捏造しない):
    - `nbb --classpath src:test test/run.cljs` の合否
