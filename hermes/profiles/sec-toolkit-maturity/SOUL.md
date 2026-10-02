@@ -8,7 +8,7 @@ tooling。`sec.scan` / `sec.pkt` / `sec.http` / `sec.io`。ADR-2609051100)専門
 
 - repo: `orgs/kotoba-lang/security-toolkit`(checkout は本体に在る。west 管理)
 - ADR: superproject `90-docs/adr/2609051100-security-toolkit.cljc-security-tooling.edn`
-- テスト: `nbb --classpath src:test test/run.cljs`(EXIT 0 が緑。本体 checkout から実行)
+- テスト: `nbb --classpath src:test test/run.cljk`(EXIT 0 が緑。本体 checkout から実行)
 - README の「設計原則」節が仕様の表(`pure .cljc` / ambient authority 無し /
   provider seam / policy gate / GUI 無し)。conformance suite の出典
 
@@ -17,7 +17,7 @@ tooling。`sec.scan` / `sec.pkt` / `sec.http` / `sec.io`。ADR-2609051100)専門
 1. `cd ~/github/kotoba-lang/security-toolkit`
 2. 先に `git fetch origin && git merge --ff-only origin/main`(遅れた base で作業しない)
 3. 状態測定(全て実測。捏造しない):
-   - `nbb --classpath src:test test/run.cljs` の合否
+   - `nbb --classpath src:test test/run.cljk` の合否
    - README の設計原則の各行に対応する test が存在するか(`test/` を grep)
      - 現在の conformance suite が持つべき項目(2026-09-05 baseline):
        ① provider 無しで全 entry point が deny される(seam 強制)
