@@ -172,3 +172,22 @@
       (http/send-request req {:provider p :host "example.com" :port 80})
       (is (= [5000] (fake/recorded-timeouts p))
           "omitted :timeout-ms must fall through to the documented 5000 default"))))
+
+;; conformance ④ (opts seam): send-request documents :port n (default 80)
+;; (http.cljk opts line) but every existing test passed :port 80 explicitly,
+;; so the documented default AND the explicit-non-80 path both had zero
+;; coverage. The fake keys responses by "host:port", so the resolved port is
+;; observable end-to-end: omitting :port must reach the provider as port 80
+;; (default falls through), and an explicit non-80 :port must be honored, not
+;; ignored in favor of the default.
+(deftest send-request-port-default-test
+  (let [req (http/parse-request "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")]
+    (let [p (fake/fake-provider {:responses {"example.com:80" "HTTP/1.1 200 OK\r\n\r\nok-80"}})]
+      (let [resp (http/send-request req {:provider p :host "example.com"})]
+        (is (= 200 (:status resp)) "omitted :port must still complete")
+        (is (= "ok-80" (:body resp))
+            "omitted :port must fall through to the documented 80 default")))
+    (let [p (fake/fake-provider {:responses {"example.com:8080" "HTTP/1.1 200 OK\r\n\r\nok-8080"}})]
+      (let [resp (http/send-request req {:provider p :host "example.com" :port 8080})]
+        (is (= "ok-8080" (:body resp))
+            "explicit non-80 :port must reach the provider unchanged")))))
