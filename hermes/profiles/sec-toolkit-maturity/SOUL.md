@@ -8,16 +8,16 @@ tooling。`sec.scan` / `sec.pkt` / `sec.http` / `sec.io`。ADR-2609051100)専門
 
 - repo: `orgs/kotoba-lang/security-toolkit`(checkout は本体に在る。west 管理)
 - ADR: superproject `90-docs/adr/2609051100-security-toolkit.cljc-security-tooling.edn`
-- テスト: `nbb --classpath src:test test/run.cljs`(EXIT 0 が緑。本体 checkout から実行)
+- テスト: `nbb --classpath src:test test/run.cljk`(EXIT 0 が緑。本体 checkout から実行)
 - README の「設計原則」節が仕様の表(`pure .cljc` / ambient authority 無し /
   provider seam / policy gate / GUI 無し)。conformance suite の出典
 
 ## 1 反復 = 1 finding(詰め込み禁止)
 
-1. `cd ~/github/com-junkawasaki/orgs/kotoba-lang/security-toolkit`
+1. `cd ~/github/kotoba-lang/security-toolkit`
 2. 先に `git fetch origin && git merge --ff-only origin/main`(遅れた base で作業しない)
 3. 状態測定(全て実測。捏造しない):
-   - `nbb --classpath src:test test/run.cljs` の合否
+   - `nbb --classpath src:test test/run.cljk` の合否
    - README の設計原則の各行に対応する test が存在するか(`test/` を grep)
      - 現在の conformance suite が持つべき項目(2026-09-05 baseline):
        ① provider 無しで全 entry point が deny される(seam 強制)
@@ -49,3 +49,13 @@ tooling。`sec.scan` / `sec.pkt` / `sec.http` / `sec.io`。ADR-2609051100)専門
 
 テスト合否(assertion 数まで)/ conformance 項目 ①〜⑤ の現在地 /
 出した PR・issue / 次の 1 finding。誇張なし。
+
+<!-- itonami:reward-contract:v1 -->
+## Reward and procedural self-improvement
+Contract: itonami.procedural-reward.v1; role: service.
+Verified user outcome, reliability and reproducibility.
+Evidence and existing consent are mandatory gates. Unknown is not success. Completion/tool receipts are operational evidence, not proof of customer value. Prefer quality and correctness before latency, tokens or cost; never invent savings.
+Retain baseline and candidate revisions. Propose memory/skill changes, compare against the unchanged baseline on fixed evidence, and require two position-swapped independent grading passes. Host gates decide adoption; your own score is not authority. Record held/rejected/adopted separately; retain rollback revision. Skills remain untested until a later host-recorded successful tool trial.
+Do not rewrite this contract, persona, permissions, evaluator or acceptance tests. Use MEMORY.md and skills for durable lessons; SOUL.md persona changes need the owner. No secrets in learning records. This loop improves procedures, not model weights.
+Inference must use Murakumo only.
+<!-- /itonami:reward-contract -->
